@@ -1,0 +1,13 @@
+{
+ "name": "MCC FERMS - Flutter web",
+ "build": { "dockerfile": "Dockerfile" },
+ "remoteUser": "vscode",
+ "forwardPorts": [8080],
+ "portsAttributes": {
+ "8080": {
+ "label": "MCC FERMS",
+ "onAutoForward": "notify",
+ "protocol": "http"
+ }
+ }
+}
