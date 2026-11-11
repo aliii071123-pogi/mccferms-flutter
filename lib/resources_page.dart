@@ -1,0 +1,518 @@
+import 'package:flutter/material.dart';
+
+import 'ferms_models.dart';
+import 'ferms_repository.dart';
+
+class ResourcesPage extends StatelessWidget {
+  const ResourcesPage({
+    super.key,
+    required this.repository,
+    required this.user,
+    required this.facilities,
+    required this.equipment,
+    required this.onRefresh,
+  });
+
+  final FermsRepository repository;
+  final FermsUser user;
+  final List<Facility> facilities;
+  final List<Equipment> equipment;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) => DefaultTabController(
+    length: 2,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Resources',
+          style: Theme.of(context).textTheme.headlineSmall
+              ?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        const TabBar(
+          isScrollable: true,
+          tabs: [
+            Tab(icon: Icon(Icons.apartment_outlined), text: 'Facilities'),
+            Tab(icon: Icon(Icons.inventory_2_outlined), text: 'Equipment'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              _FacilityList(
+                repository: repository,
+                user: user,
+                facilities: facilities,
+                onRefresh: onRefresh,
+              ),
+              _EquipmentList(
+                repository: repository,
+                user: user,
+                equipment: equipment,
+                onRefresh: onRefresh,
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FacilityList extends StatelessWidget {
+  const _FacilityList({
+    required this.repository,
+    required this.user,
+    required this.facilities,
+    required this.onRefresh,
+  });
+
+  final FermsRepository repository;
+  final FermsUser user;
+  final List<Facility> facilities;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      if (user.canManageResources)
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 8),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () => _editFacility(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Add facility'),
+            ),
+          ),
+        ),
+      Expanded(
+        child: facilities.isEmpty
+            ? const _EmptyResources('No facilities are available.')
+            : RefreshIndicator(
+                onRefresh: onRefresh,
+                child: ListView.separated(
+                  padding: const EdgeInsets.only(top: 10, bottom: 24),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: facilities.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final facility = facilities[index];
+                    return _ResourceTile(
+                      title: facility.name,
+                      subtitle: facility.description,
+                      icon: Icons.apartment_outlined,
+                      detail: [
+                        if (facility.capacity > 0)
+                          '${facility.capacity} people',
+                        if (facility.location.isNotEmpty) facility.location,
+                      ].join(' · '),
+                      schedule: facility.schedule,
+                      managed: user.canManageResources,
+                      onEdit: () => _editFacility(context, facility),
+                      onDelete: () => _deleteResource(
+                        context,
+                        title: facility.name,
+                        delete: () => repository.deleteFacility(facility.id),
+                        onRefresh: onRefresh,
+                      ),
+                    );
+                  },
+                ),
+              ),
+      ),
+    ],
+  );
+
+  Future<void> _editFacility(BuildContext context, [Facility? facility]) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            _ResourceForm(repository: repository, facility: facility),
+      ),
+    );
+    if (changed == true) await onRefresh();
+  }
+}
+
+class _EquipmentList extends StatelessWidget {
+  const _EquipmentList({
+    required this.repository,
+    required this.user,
+    required this.equipment,
+    required this.onRefresh,
+  });
+
+  final FermsRepository repository;
+  final FermsUser user;
+  final List<Equipment> equipment;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      if (user.canManageResources)
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: () => _editEquipment(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Add equipment'),
+          ),
+        ),
+      Expanded(
+        child: equipment.isEmpty
+            ? const _EmptyResources('No equipment is available.')
+            : RefreshIndicator(
+                onRefresh: onRefresh,
+                child: ListView.separated(
+                  padding: const EdgeInsets.only(top: 10, bottom: 24),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: equipment.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final item = equipment[index];
+                    return _ResourceTile(
+                      title: item.name,
+                      subtitle: item.description,
+                      icon: Icons.inventory_2_outlined,
+                      detail:
+                          '${item.availableQuantity} available of ${item.quantity}',
+                      schedule: item.schedule,
+                      managed: user.canManageResources,
+                      onEdit: () => _editEquipment(context, item),
+                      onDelete: () => _deleteResource(
+                        context,
+                        title: item.name,
+                        delete: () => repository.deleteEquipment(item.id),
+                        onRefresh: onRefresh,
+                      ),
+                    );
+                  },
+                ),
+              ),
+      ),
+    ],
+  );
+
+  Future<void> _editEquipment(BuildContext context, [Equipment? item]) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _ResourceForm(repository: repository, equipment: item),
+      ),
+    );
+    if (changed == true) await onRefresh();
+  }
+}
+
+class _ResourceTile extends StatelessWidget {
+  const _ResourceTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.detail,
+    required this.schedule,
+    required this.managed,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final String detail;
+  final List<JsonMap> schedule;
+  final bool managed;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: const Color(0xFF9E1B32)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(color: Color(0xFF687078)),
+                      ),
+                    ],
+                    if (detail.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(detail, style: const TextStyle(fontSize: 12)),
+                    ],
+                  ],
+                ),
+              ),
+              if (managed) ...[
+                IconButton(
+                  tooltip: 'Edit $title',
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Delete $title',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ],
+          ),
+          if (schedule.isNotEmpty) ...[
+            const Divider(height: 24),
+            const Text(
+              'UPCOMING SCHEDULE',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...schedule.take(3).map((block) {
+              final date = stringValue(block['date']);
+              final start = stringValue(block['start_time']);
+              final end = stringValue(block['end_time']);
+              final status = stringValue(block['status'], 'reserved');
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.event_busy_outlined,
+                      size: 15,
+                      color: Color(0xFF687078),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$date  $start–$end',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    Text(
+                      status,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF687078),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _ResourceForm extends StatefulWidget {
+  const _ResourceForm({this.repository, this.facility, this.equipment});
+  final FermsRepository? repository;
+  final Facility? facility;
+  final Equipment? equipment;
+
+  @override
+  State<_ResourceForm> createState() => _ResourceFormState();
+}
+
+class _ResourceFormState extends State<_ResourceForm> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _name;
+  late final TextEditingController _description;
+  late final TextEditingController _quantity;
+  bool _saving = false;
+  String? _error;
+
+  bool get _isFacility => widget.facility != null || widget.equipment == null;
+  String get _title => _isFacility ? 'facility' : 'equipment';
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(
+      text: widget.facility?.name ?? widget.equipment?.name,
+    );
+    _description = TextEditingController(
+      text: widget.facility?.description ?? widget.equipment?.description,
+    );
+    _quantity = TextEditingController(
+      text: widget.facility != null
+          ? '${widget.facility!.capacity}'
+          : widget.equipment == null
+          ? ''
+          : '${widget.equipment!.quantity}',
+    );
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    _quantity.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final payload = <String, dynamic>{
+      'name': _name.text.trim(),
+      'description': _description.text.trim(),
+      if (_isFacility) 'capacity': int.parse(_quantity.text),
+      if (!_isFacility) 'quantity': int.parse(_quantity.text),
+    };
+    try {
+      if (_isFacility) {
+        await widget.repository!.saveFacility(payload, id: widget.facility?.id);
+      } else {
+        await widget.repository!.saveEquipment(
+          payload,
+          id: widget.equipment?.id,
+        );
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(
+        '${widget.facility == null && widget.equipment == null ? 'Add' : 'Edit'} ${_title[0].toUpperCase()}${_title.substring(1)}',
+      ),
+    ),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              TextFormField(
+                controller: _name,
+                enabled: !_saving,
+                maxLength: 120,
+                decoration: const InputDecoration(labelText: 'Name'),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a name.'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _description,
+                enabled: !_saving,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Description'),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _quantity,
+                enabled: !_saving,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _isFacility ? 'Capacity' : 'Total quantity',
+                ),
+                validator: (value) {
+                  final number = int.tryParse(value ?? '');
+                  if (number == null || number < 1) {
+                    return 'Enter a number greater than zero.';
+                  }
+                  return null;
+                },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(_error!, style: const TextStyle(color: Color(0xFF9B2438))),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Saving…' : 'Save $_title'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _deleteResource(
+  BuildContext context, {
+  required String title,
+  required Future<void> Function() delete,
+  required Future<void> Function() onRefresh,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Delete $title?'),
+      content: const Text('This action cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Keep it'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  try {
+    await delete();
+    await onRefresh();
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+}
+
+class _EmptyResources extends StatelessWidget {
+  const _EmptyResources(this.message);
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(child: Text(message));
+}

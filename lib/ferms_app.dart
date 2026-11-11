@@ -1,0 +1,1092 @@
+import 'package:flutter/material.dart';
+
+import 'api_client.dart';
+import 'auth_controller.dart';
+import 'ferms_models.dart';
+import 'ferms_repository.dart';
+import 'reservation_form.dart';
+import 'reservations_page.dart';
+import 'resources_page.dart';
+
+class FermsApp extends StatefulWidget {
+  const FermsApp({super.key, required this.api, required this.repository});
+
+  final FermsApiClient api;
+  final FermsRepository repository;
+
+  @override
+  State<FermsApp> createState() => _FermsAppState();
+}
+
+class _FermsAppState extends State<FermsApp> {
+  late final AuthController _auth;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = AuthController(
+      api: widget.api,
+      repository: widget.repository,
+      baseUrl: const String.fromEnvironment('API_BASE_URL'),
+    )..addListener(_onAuthChanged);
+    _auth.initialize();
+  }
+
+  void _onAuthChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _auth
+      ..removeListener(_onAuthChanged)
+      ..dispose();
+    widget.api.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'MCC FERMS',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF9E1B32),
+        primary: const Color(0xFF9E1B32),
+        surface: const Color(0xFFFAFAF8),
+      ),
+      scaffoldBackgroundColor: const Color(0xFFFAFAF8),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFFFAFAF8),
+        foregroundColor: Color(0xFF25282A),
+        surfaceTintColor: Colors.transparent,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: Color(0xFFD8D8D5)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: Color(0xFF9E1B32), width: 1.5),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+      ),
+    ),
+    home: _auth.loading
+        ? const _LoadingScreen()
+        : _auth.user == null
+        ? _SignInScreen(auth: _auth)
+        : _FermsHome(auth: _auth, repository: widget.repository),
+  );
+}
+
+class _SignInScreen extends StatelessWidget {
+  const _SignInScreen({required this.auth});
+  final AuthController auth;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF6F5F2),
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 900;
+          if (wide) {
+            return Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFFB2223E), Color(0xFF781329)],
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(56),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _BrandLockup(onDark: true),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Your campus,\nready when you are.',
+                              style: TextStyle(
+                                fontSize: 42,
+                                height: 1.12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'A simpler way to reserve facilities and equipment at Mabalacat City College.',
+                              style: TextStyle(
+                                color: Color(0xFFFFE6E9),
+                                fontSize: 16,
+                                height: 1.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          'MABALACAT CITY COLLEGE',
+                          style: TextStyle(
+                            color: Color(0xFFFFE6E9),
+                            fontSize: 11,
+                            letterSpacing: 1.8,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: _SignInCard(auth: auth),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight - 56,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const _BrandLockup(onDark: false),
+                      const SizedBox(height: 28),
+                      _SignInCard(auth: auth),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'MABALACAT CITY COLLEGE',
+                        style: TextStyle(
+                          color: Color(0xFF7C7E80),
+                          fontSize: 10,
+                          letterSpacing: 1.6,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
+class _BrandLockup extends StatelessWidget {
+  const _BrandLockup({required this.onDark});
+
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = onDark ? Colors.white : const Color(0xFF282526);
+    final secondary = onDark
+        ? const Color(0xFFFFE6E9)
+        : const Color(0xFF747477);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: onDark ? Colors.white.withValues(alpha: 0.14) : Colors.white,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(
+            Icons.account_balance_outlined,
+            color: onDark ? Colors.white : const Color(0xFF9E1B32),
+            size: 27,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'MCC FERMS',
+              style: TextStyle(
+                color: foreground,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'FACILITY & EQUIPMENT RESERVATIONS',
+              style: TextStyle(
+                color: secondary,
+                fontSize: 9,
+                letterSpacing: 0.7,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SignInCard extends StatelessWidget {
+  const _SignInCard({required this.auth});
+
+  final AuthController auth;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(28),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: const Color(0xFFE9E6E3)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x120E1420),
+          blurRadius: 28,
+          offset: Offset(0, 12),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFAECEF),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: const Icon(
+            Icons.waving_hand_outlined,
+            color: Color(0xFF9E1B32),
+            size: 22,
+          ),
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Welcome back',
+          style: TextStyle(
+            color: Color(0xFF282526),
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Sign in with your Mabalacat City College Microsoft account to continue.',
+          style: TextStyle(color: Color(0xFF747477), fontSize: 14, height: 1.5),
+        ),
+        if (auth.error != null) ...[
+          const SizedBox(height: 20),
+          _ErrorBanner(auth.error!),
+        ],
+        const SizedBox(height: 24),
+        FilledButton.icon(
+          onPressed: auth.signingIn ? null : auth.beginSignIn,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 54),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          icon: auth.signingIn
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.login),
+          label: Text(
+            auth.signingIn ? 'Opening sign-in…' : 'Continue with Microsoft',
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.verified_user_outlined,
+              size: 15,
+              color: Color(0xFF747477),
+            ),
+            SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                'MCC accounts ending in @mcc.edu.ph are required.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFF747477), fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _FermsHome extends StatefulWidget {
+  const _FermsHome({required this.auth, required this.repository});
+  final AuthController auth;
+  final FermsRepository repository;
+
+  @override
+  State<_FermsHome> createState() => _FermsHomeState();
+}
+
+class _FermsHomeState extends State<_FermsHome> {
+  int _section = 0;
+  bool _history = false;
+  bool _loading = true;
+  String? _error;
+  List<Reservation> _reservations = const [];
+  List<Facility> _facilities = const [];
+  List<Equipment> _equipment = const [];
+  dynamic _dashboard;
+  int _loadId = 0;
+  bool _profileRequired = false;
+
+  FermsUser get _user => widget.auth.user!;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileRequired = _user.profileIncomplete;
+    _load();
+  }
+
+  Future<void> _load({bool? history}) async {
+    if (history != null) _history = history;
+    final currentLoad = ++_loadId;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait<dynamic>([
+        widget.repository.dashboard(),
+        _profileRequired
+            ? Future.value(<Reservation>[])
+            : widget.repository.reservations(history: _history),
+        widget.repository.facilities(),
+        widget.repository.equipment(),
+      ]);
+      if (!mounted || currentLoad != _loadId) return;
+      setState(() {
+        _dashboard = results[0];
+        _reservations = results[1] as List<Reservation>;
+        _facilities = results[2] as List<Facility>;
+        _equipment = results[3] as List<Equipment>;
+      });
+    } catch (error) {
+      if (mounted && currentLoad == _loadId) {
+        if (error is ApiException && error.profileRequired) {
+          setState(() => _profileRequired = true);
+          await _load(history: _history);
+        } else {
+          setState(() => _error = error.toString());
+        }
+      }
+    } finally {
+      if (mounted && currentLoad == _loadId) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openRequest() async {
+    if (_profileRequired || _user.profileIncomplete) {
+      setState(() => _section = 3);
+      return;
+    }
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ReservationForm(
+          repository: widget.repository,
+          facilities: _facilities,
+          equipment: _equipment,
+        ),
+      ),
+    );
+    if (changed == true) await _load(history: false);
+  }
+
+  Future<void> _saveProfile(String organization, String position) async {
+    await widget.repository.saveProfile(
+      organization: organization,
+      position: position,
+    );
+    final updatedUser = await widget.repository.me();
+    if (mounted) {
+      setState(() => _profileRequired = updatedUser.profileIncomplete);
+    }
+    widget.auth.setUser(updatedUser);
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Profile updated.')));
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 820;
+      final content = _buildSection();
+      return Scaffold(
+        appBar: AppBar(
+          titleSpacing: wide ? 28 : 16,
+          title: Row(
+            children: [
+              const Icon(
+                Icons.account_balance_outlined,
+                color: Color(0xFF9E1B32),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'MCC FERMS',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const Spacer(),
+              if (wide)
+                Text(
+                  _user.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Sign out',
+                child: IconButton(
+                  onPressed: widget.auth.signOut,
+                  icon: const Icon(Icons.logout),
+                ),
+              ),
+            ],
+          ),
+        ),
+        floatingActionButton: _section == 0 || _section == 1
+            ? FloatingActionButton.extended(
+                onPressed: _openRequest,
+                backgroundColor: const Color(0xFF9E1B32),
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.add),
+                label: const Text('New request'),
+              )
+            : null,
+        body: Row(
+          children: [
+            if (wide)
+              NavigationRail(
+                selectedIndex: _section,
+                onDestinationSelected: (index) =>
+                    setState(() => _section = index),
+                labelType: NavigationRailLabelType.all,
+                leading: Padding(
+                  padding: const EdgeInsets.only(bottom: 14, top: 4),
+                  child: Text(
+                    _user.role.toUpperCase().replaceAll('_', ' '),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                destinations: const [
+                  NavigationRailDestination(
+                    icon: Icon(Icons.space_dashboard_outlined),
+                    selectedIcon: Icon(Icons.space_dashboard),
+                    label: Text('Overview'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.event_note_outlined),
+                    selectedIcon: Icon(Icons.event_note),
+                    label: Text('Requests'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.apartment_outlined),
+                    selectedIcon: Icon(Icons.apartment),
+                    label: Text('Resources'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Icons.account_circle_outlined),
+                    selectedIcon: Icon(Icons.account_circle),
+                    label: Text('Profile'),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  wide ? 26 : 18,
+                  18,
+                  wide ? 26 : 18,
+                  8,
+                ),
+                child: _error != null
+                    ? _PageError(message: _error!, onRetry: _load)
+                    : content,
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: wide
+            ? null
+            : NavigationBar(
+                selectedIndex: _section,
+                onDestinationSelected: (index) =>
+                    setState(() => _section = index),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.space_dashboard_outlined),
+                    selectedIcon: Icon(Icons.space_dashboard),
+                    label: 'Overview',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.event_note_outlined),
+                    selectedIcon: Icon(Icons.event_note),
+                    label: 'Requests',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.apartment_outlined),
+                    selectedIcon: Icon(Icons.apartment),
+                    label: 'Resources',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.account_circle_outlined),
+                    selectedIcon: Icon(Icons.account_circle),
+                    label: 'Profile',
+                  ),
+                ],
+              ),
+      );
+    },
+  );
+
+  Widget _buildSection() {
+    if ((_profileRequired || _user.profileIncomplete) && _section != 3) {
+      return _ProfileRequired(onComplete: () => setState(() => _section = 3));
+    }
+    if (_loading && _reservations.isEmpty && _facilities.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return switch (_section) {
+      0 => _DashboardPage(
+        user: _user,
+        dashboard: _dashboard,
+        reservations: _reservations,
+        facilities: _facilities,
+        equipment: _equipment,
+        onNewRequest: _openRequest,
+        onRequests: () => setState(() => _section = 1),
+        onRefresh: _load,
+      ),
+      1 => ReservationsPage(
+        repository: widget.repository,
+        user: _user,
+        reservations: _reservations,
+        facilities: _facilities,
+        equipment: _equipment,
+        loading: _loading,
+        error: null,
+        onRefresh: (history) => _load(history: history),
+      ),
+      2 => ResourcesPage(
+        repository: widget.repository,
+        user: _user,
+        facilities: _facilities,
+        equipment: _equipment,
+        onRefresh: _load,
+      ),
+      _ => _ProfilePage(
+        user: _user,
+        onSave: _saveProfile,
+        onSignOut: widget.auth.signOut,
+      ),
+    };
+  }
+}
+
+class _DashboardPage extends StatelessWidget {
+  const _DashboardPage({
+    required this.user,
+    required this.dashboard,
+    required this.reservations,
+    required this.facilities,
+    required this.equipment,
+    required this.onNewRequest,
+    required this.onRequests,
+    required this.onRefresh,
+  });
+
+  final FermsUser user;
+  final dynamic dashboard;
+  final List<Reservation> reservations;
+  final List<Facility> facilities;
+  final List<Equipment> equipment;
+  final VoidCallback onNewRequest;
+  final VoidCallback onRequests;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = asJsonMap(unwrapData(dashboard));
+    final pending = intValue(
+      data['pending_requests'] ?? data['pending'] ?? data['pending_count'],
+      reservations.where((item) => item.isPending).length,
+    );
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 90),
+        children: [
+          Text(
+            'Good day, ${user.name.split(' ').first}',
+            style: Theme.of(context).textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.w800, fontFamily: 'serif'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            user.canManageResources
+                ? 'Facility and equipment activity at a glance.'
+                : 'Your campus requests and available resources.',
+            style: const TextStyle(color: Color(0xFF687078)),
+          ),
+          const SizedBox(height: 22),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 700 ? 4 : 2;
+              return GridView.count(
+                crossAxisCount: columns,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 1.8,
+                children: [
+                  _StatTile(
+                    label: 'Pending',
+                    value: '$pending',
+                    icon: Icons.hourglass_top_outlined,
+                    color: const Color(0xFF9A5A00),
+                  ),
+                  _StatTile(
+                    label: 'Requests',
+                    value: '${reservations.length}',
+                    icon: Icons.event_note_outlined,
+                    color: const Color(0xFF9E1B32),
+                  ),
+                  _StatTile(
+                    label: 'Facilities',
+                    value: '${facilities.length}',
+                    icon: Icons.apartment_outlined,
+                    color: const Color(0xFF28664D),
+                  ),
+                  _StatTile(
+                    label: 'Equipment',
+                    value: '${equipment.length}',
+                    icon: Icons.inventory_2_outlined,
+                    color: const Color(0xFF455A64),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 22),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: onNewRequest,
+                icon: const Icon(Icons.add),
+                label: const Text('New request'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onRequests,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('View requests'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 30),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Upcoming requests',
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                onPressed: onRequests,
+                child: const Text('All requests'),
+              ),
+            ],
+          ),
+          if (reservations.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Text('No upcoming requests to show.'),
+            )
+          else
+            ...reservations
+                .take(4)
+                .map(
+                  (reservation) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFF9E7EA),
+                          foregroundColor: Color(0xFF9E1B32),
+                          child: Icon(Icons.event_outlined),
+                        ),
+                        title: Text(
+                          reservation.purpose,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${reservation.date} · ${reservation.startTime}–${reservation.endTime}',
+                        ),
+                        trailing: Text(
+                          reservation.status.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF9A5A00),
+                          ),
+                        ),
+                        onTap: onRequests,
+                      ),
+                    ),
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: const Border.fromBorderSide(BorderSide(color: Color(0xFFE7E6E2))),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF687078)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ProfilePage extends StatefulWidget {
+  const _ProfilePage({
+    required this.user,
+    required this.onSave,
+    required this.onSignOut,
+  });
+
+  final FermsUser user;
+  final Future<void> Function(String organization, String position) onSave;
+  final VoidCallback onSignOut;
+
+  @override
+  State<_ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<_ProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _organization;
+  late final TextEditingController _position;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _organization = TextEditingController(text: widget.user.organization);
+    _position = TextEditingController(text: widget.user.position);
+  }
+
+  @override
+  void dispose() {
+    _organization.dispose();
+    _position.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(_organization.text, _position.text);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.only(bottom: 32),
+    children: [
+      Text(
+        'Profile',
+        style: Theme.of(context).textTheme.headlineSmall
+            ?.copyWith(fontWeight: FontWeight.w800),
+      ),
+      const SizedBox(height: 20),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+        title: Text(widget.user.name),
+        subtitle: Text(widget.user.email),
+      ),
+      const SizedBox(height: 8),
+      Text('Role: ${widget.user.role.replaceAll('_', ' ')}'),
+      if (widget.user.role.toLowerCase() == 'student') ...[
+        const SizedBox(height: 24),
+        Text(
+          'Organization details',
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _organization,
+                enabled: !_saving,
+                maxLength: 160,
+                decoration: const InputDecoration(
+                  labelText: 'Organization or institute council',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter your organization.'
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _position,
+                enabled: !_saving,
+                maxLength: 120,
+                decoration: const InputDecoration(labelText: 'Position'),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter your position.'
+                    : null,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                _ErrorBanner(_error!),
+              ],
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(_saving ? 'Saving…' : 'Save profile'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      if (widget.user.isSuperAdmin) ...[
+        const SizedBox(height: 28),
+        const _ErrorBanner(
+          'Staff and administrator account management is not included in the documented API contract.',
+        ),
+      ],
+      const SizedBox(height: 28),
+      OutlinedButton.icon(
+        onPressed: widget.onSignOut,
+        icon: const Icon(Icons.logout),
+        label: const Text('Sign out'),
+      ),
+    ],
+  );
+}
+
+class _ProfileRequired extends StatelessWidget {
+  const _ProfileRequired({required this.onComplete});
+  final VoidCallback onComplete;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.assignment_ind_outlined,
+            size: 42,
+            color: Color(0xFF9E1B32),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Complete your organization profile',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Add your organization or institute council and position before submitting a request.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: onComplete,
+            child: const Text('Complete profile'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: CircularProgressIndicator()));
+}
+
+class _PageError extends StatelessWidget {
+  const _PageError({required this.message, required this.onRetry});
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 40,
+            color: Color(0xFF9E1B32),
+          ),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try again'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner(this.message);
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFECEF),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(message, style: const TextStyle(color: Color(0xFF8A1C32))),
+  );
+}
