@@ -36,4 +36,40 @@ void main() {
       contains('later'),
     );
   });
+
+  test('validates multi-day count, future dates, and strict ordering', () {
+    final today = DateTime(2026, 11, 12);
+    expect(
+      validateReservationDates(
+        dates: [DateTime(2026, 11, 12), DateTime(2026, 11, 14)],
+        durationDays: 2,
+        today: today,
+      ),
+      isNull,
+    );
+    expect(
+      validateReservationDates(
+        dates: [DateTime(2026, 11, 12), DateTime(2026, 11, 12)],
+        durationDays: 2,
+        today: today,
+      ),
+      contains('strictly increasing'),
+    );
+    expect(
+      validateReservationDates(
+        dates: [DateTime(2026, 11, 11)],
+        durationDays: 1,
+        today: today,
+      ),
+      contains('today or a future'),
+    );
+    expect(
+      validateReservationDates(
+        dates: List.generate(8, (index) => today.add(Duration(days: index))),
+        durationDays: 8,
+        today: today,
+      ),
+      contains('1 and 7'),
+    );
+  });
 }

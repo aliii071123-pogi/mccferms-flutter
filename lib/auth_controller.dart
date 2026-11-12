@@ -17,7 +17,9 @@ class AuthController extends ChangeNotifier {
     FlutterSecureStorage? storage,
     AppLinks? appLinks,
   }) : _storage = storage ?? const FlutterSecureStorage(),
-       _appLinks = appLinks ?? AppLinks();
+       _appLinks = appLinks ?? AppLinks() {
+    api.onAccountSuspended = _handleSuspension;
+  }
 
   static const _tokenKey = 'ferms_api_token';
 
@@ -61,7 +63,7 @@ class AuthController extends ChangeNotifier {
           user = await repository.me();
         } on ApiException catch (exception) {
           if (exception.statusCode == 401) await _clearSession();
-          error = exception.message;
+          if (exception.statusCode != 403) error = exception.message;
         } catch (_) {
           error = 'Could not reach MCC FERMS. Check your connection and retry.';
         }
@@ -160,6 +162,13 @@ class AuthController extends ChangeNotifier {
     user = null;
     api.token = null;
     await _storage.delete(key: _tokenKey);
+  }
+
+  Future<void> _handleSuspension(ApiException _) async {
+    await _clearSession();
+    error =
+        'Your account is suspended. Contact MCC FERMS support for assistance.';
+    notifyListeners();
   }
 
   void _setError(String message) {

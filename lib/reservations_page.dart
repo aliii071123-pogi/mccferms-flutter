@@ -182,7 +182,7 @@ class _ReservationsPageState extends State<ReservationsPage> {
             ? 'Review and track facility and equipment requests.'
             : 'Track your facility and equipment requests.',
         style: Theme.of(context).textTheme.bodyMedium
-            ?.copyWith(color: const Color(0xFF687078)),
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
       if (_actionError != null) ...[
         const SizedBox(height: 14),
@@ -246,7 +246,7 @@ class _ReservationsPageState extends State<ReservationsPage> {
     final canReview = widget.user.canReviewRequests && reservation.isPending;
     final canDelete = widget.user.canReviewRequests;
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -293,8 +293,8 @@ class _ReservationsPageState extends State<ReservationsPage> {
                 const SizedBox(height: 8),
                 Text(
                   '${reservation.requesterName}${reservation.requesterEmail.isEmpty ? '' : ' · ${reservation.requesterEmail}'}',
-                  style: const TextStyle(
-                    color: Color(0xFF687078),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -356,9 +356,25 @@ class _ReservationsPageState extends State<ReservationsPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '${reservation.date} · ${reservation.startTime}–${reservation.endTime}',
-            ),
+            if (reservation.schedules.length > 1) ...[
+              const Text(
+                'Event schedule',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              ...reservation.schedules.asMap().entries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Day ${entry.key + 1}: ${entry.value.date} · '
+                    '${entry.value.startTime}–${entry.value.endTime}',
+                  ),
+                ),
+              ),
+            ] else
+              Text(
+                '${reservation.date} · ${reservation.startTime}–${reservation.endTime}',
+              ),
             if (reservation.facilityName.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text('Facility: ${reservation.facilityName}'),
@@ -427,9 +443,19 @@ class _Meta extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 16, color: const Color(0xFF687078)),
+      Icon(
+        icon,
+        size: 16,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
       const SizedBox(width: 5),
-      Text(text, style: const TextStyle(fontSize: 12)),
+      Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
     ],
   );
 }

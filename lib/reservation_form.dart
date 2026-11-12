@@ -27,9 +27,7 @@ class _ReservationFormState extends State<ReservationForm> {
   late final TextEditingController _paxController;
   late final TextEditingController _purposeController;
   late final TextEditingController _descriptionController;
-  late DateTime _date;
-  late TimeOfDay _start;
-  late TimeOfDay _end;
+  final List<_ReservationDay> _days = [];
   String _facilityId = '';
   final Map<String, int> _quantities = {};
   bool _saving = false;
@@ -47,12 +45,28 @@ class _ReservationFormState extends State<ReservationForm> {
             widget.facilities.any((facility) => facility.id == facilityId)
         ? facilityId
         : '';
-    _date = DateTime.tryParse(reservation?.date ?? '') ?? DateTime.now();
-    _start =
-        _parseTime(reservation?.startTime) ??
-        const TimeOfDay(hour: 8, minute: 0);
-    _end =
-        _parseTime(reservation?.endTime) ?? const TimeOfDay(hour: 9, minute: 0);
+    final schedules = reservation?.schedules.isNotEmpty == true
+        ? reservation!.schedules
+        : [
+            ReservationSchedule(
+              date: reservation?.date ?? '',
+              startTime: reservation?.startTime ?? '',
+              endTime: reservation?.endTime ?? '',
+            ),
+          ];
+    for (final schedule in schedules) {
+      _days.add(
+        _ReservationDay(
+          date: DateTime.tryParse(schedule.date) ?? _today,
+          start:
+              _parseTime(schedule.startTime) ??
+              const TimeOfDay(hour: 8, minute: 0),
+          end:
+              _parseTime(schedule.endTime) ??
+              const TimeOfDay(hour: 9, minute: 0),
+        ),
+      );
+    }
     _paxController = TextEditingController(
       text: reservation == null ? '' : '${reservation.pax}',
     );
@@ -66,6 +80,11 @@ class _ReservationFormState extends State<ReservationForm> {
         in reservation?.equipment.entries ?? <MapEntry<String, dynamic>>[]) {
       _quantities[entry.key] = intValue(entry.value);
     }
+  }
+
+  DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
   }
 
   @override
@@ -92,21 +111,24 @@ class _ReservationFormState extends State<ReservationForm> {
   String _dateValue(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
-  Future<void> _selectDate() async {
+  Future<void> _selectDate(int index) async {
     final today = DateTime.now();
+    final minimum = index == 0
+        ? DateTime(today.year, today.month, today.day)
+        : _days[index - 1].date.add(const Duration(days: 1));
     final selected = await showDatePicker(
       context: context,
-      initialDate: _date.isBefore(DateTime(today.year, today.month, today.day))
-          ? today
-          : _date,
-      firstDate: DateTime(today.year, today.month, today.day),
+      initialDate: _days[index].date.isBefore(minimum)
+          ? minimum
+          : _days[index].date,
+      firstDate: minimum,
       lastDate: today.add(const Duration(days: 365)),
     );
-    if (selected != null) setState(() => _date = selected);
+    if (selected != null) setState(() => _days[index].date = selected);
   }
 
-  Future<void> _selectTime({required bool start}) async {
-    final value = start ? _start : _end;
+  Future<void> _selectTime(int index, {required bool start}) async {
+    final value = start ? _days[index].start : _days[index].end;
     final selected = await showTimePicker(
       context: context,
       initialTime: value,
@@ -115,34 +137,35 @@ class _ReservationFormState extends State<ReservationForm> {
     if (selected != null) {
       setState(() {
         if (start) {
-          _start = selected;
+          _days[index].start = selected;
         } else {
-          _end = selected;
+          _days[index].end = selected;
         }
       });
     }
   }
 
-  String? _validateSchedule() =>
-      validateReservationWindow(start: _start, end: _end);
-
-  String? _dateError() {
-    final today = DateTime.now();
-    return _date.isBefore(DateTime(today.year, today.month, today.day))
-        ? 'Choose today or a future date.'
-        : null;
-  }
+  String? _validateSchedule(int index) => validateReservationWindow(
+    start: _days[index].start,
+    end: _days[index].end,
+  );
 
   Future<void> _submit() async {
     if (_saving || !_formKey.currentState!.validate()) return;
-    final dateError = _dateError();
+    final dateError = validateReservationDates(
+      dates: _days.map((day) => day.date).toList(),
+      durationDays: _days.length,
+    );
     if (dateError != null) {
       setState(() => _error = dateError);
       return;
     }
-    final scheduleError = _validateSchedule();
-    if (scheduleError != null) {
-      setState(() => _error = scheduleError);
+    final scheduleError = _days.indexWhere(
+      (day) =>
+          validateReservationWindow(start: day.start, end: day.end) != null,
+    );
+    if (scheduleError != -1) {
+      setState(() => _error = _validateSchedule(scheduleError));
       return;
     }
     final quantities = <String, int>{
@@ -199,9 +222,16 @@ class _ReservationFormState extends State<ReservationForm> {
     try {
       final payload = <String, dynamic>{
         'facility_id': _facilityId.isEmpty ? null : _facilityId,
-        'date': _dateValue(_date),
-        'start_time': _timeValue(_start),
-        'end_time': _timeValue(_end),
+        'duration_days': _days.length,
+        'days': _days
+            .map(
+              (day) => {
+                'date': _dateValue(day.date),
+                'start_time': _timeValue(day.start),
+                'end_time': _timeValue(day.end),
+              },
+            )
+            .toList(),
         'pax': int.parse(_paxController.text),
         'purpose': _purposeController.text.trim(),
         'description': _descriptionController.text.trim(),
@@ -238,13 +268,38 @@ class _ReservationFormState extends State<ReservationForm> {
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (exception) {
       if (mounted) {
-        final fieldErrors = exception.errors.values
-            .expand((items) => items)
+        final facilityConflict =
+            exception.statusCode == 422 &&
+            exception.errors.containsKey('facility_conflict');
+        if (facilityConflict) {
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              icon: const Icon(Icons.event_busy_outlined),
+              title: const Text('Facility time unavailable'),
+              content: const Text(
+                'This facility and time slot conflict with another request. '
+                'Please communicate with facility staff to find out which '
+                'student organization or institute requested the slot and '
+                'coordinate with them.',
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Understood'),
+                ),
+              ],
+            ),
+          );
+        }
+        final fieldErrors = exception.errors.entries
+            .where((entry) => entry.key != 'facility_conflict')
+            .expand((entry) => entry.value)
             .join('\n');
         setState(
           () => _error = fieldErrors.isEmpty
-              ? exception.message
-              : '${exception.message}\n$fieldErrors',
+              ? (facilityConflict ? null : exception.message)
+              : '${facilityConflict ? '' : '${exception.message}\n'}$fieldErrors',
         );
       }
     } catch (_) {
@@ -302,46 +357,71 @@ class _ReservationFormState extends State<ReservationForm> {
                         : (value) => setState(() => _facilityId = value ?? ''),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _saving ? null : _selectDate,
-                          icon: const Icon(Icons.calendar_today_outlined),
-                          label: Text(
-                            '${_date.day}/${_date.month}/${_date.year}',
-                          ),
+                  DropdownButtonFormField<int>(
+                    initialValue: _days.length.clamp(1, 7),
+                    decoration: const InputDecoration(
+                      labelText: 'Number of event days',
+                    ),
+                    items: List.generate(
+                      7,
+                      (index) => DropdownMenuItem(
+                        value: index + 1,
+                        child: Text(
+                          '${index + 1} ${index == 0 ? 'day' : 'days'}',
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _saving
-                              ? null
-                              : () => _selectTime(start: true),
-                          icon: const Icon(Icons.schedule_outlined),
-                          label: Text('Start ${_start.format(context)}'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _saving
-                              ? null
-                              : () => _selectTime(start: false),
-                          icon: const Icon(Icons.schedule_outlined),
-                          label: Text('End ${_end.format(context)}'),
-                        ),
-                      ),
-                    ],
+                    ),
+                    onChanged: _saving
+                        ? null
+                        : (value) {
+                            if (value == null) return;
+                            setState(() {
+                              while (_days.length < value) {
+                                final nextDate = _days.last.date.add(
+                                  const Duration(days: 1),
+                                );
+                                _days.add(
+                                  _ReservationDay(
+                                    date: nextDate,
+                                    start: const TimeOfDay(hour: 8, minute: 0),
+                                    end: const TimeOfDay(hour: 9, minute: 0),
+                                  ),
+                                );
+                              }
+                              if (_days.length > value) {
+                                _days.removeRange(value, _days.length);
+                              }
+                            });
+                          },
                   ),
+                  const SizedBox(height: 12),
+                  ...List.generate(_days.length, _daySection),
                   const SizedBox(height: 18),
-                  if (_validateSchedule() != null)
+                  if (_days.indexWhere(
+                        (day) =>
+                            validateReservationWindow(
+                              start: day.start,
+                              end: day.end,
+                            ) !=
+                            null,
+                      ) !=
+                      -1)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
-                        _validateSchedule()!,
-                        style: const TextStyle(color: Color(0xFF9B2438)),
+                        _validateSchedule(
+                          _days.indexWhere(
+                            (day) =>
+                                validateReservationWindow(
+                                  start: day.start,
+                                  end: day.end,
+                                ) !=
+                                null,
+                          ),
+                        )!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ),
                     ),
                   TextFormField(
@@ -471,6 +551,100 @@ class _ReservationFormState extends State<ReservationForm> {
       ),
     );
   }
+
+  Widget _daySection(int index) {
+    final day = _days[index];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                index == 0 ? 'Pick date for the first day' : 'Day ${index + 1}',
+                style: Theme.of(context).textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _selectDate(index),
+                    icon: const Icon(Icons.calendar_today_outlined),
+                    label: Text(_dateValue(day.date)),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _selectTime(index, start: true),
+                    icon: const Icon(Icons.schedule_outlined),
+                    label: Text('Start ${day.start.format(context)}'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _saving
+                        ? null
+                        : () => _selectTime(index, start: false),
+                    icon: const Icon(Icons.schedule_outlined),
+                    label: Text('End ${day.end.format(context)}'),
+                  ),
+                ],
+              ),
+              if (_validateSchedule(index) != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _validateSchedule(index)!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReservationDay {
+  _ReservationDay({required this.date, required this.start, required this.end});
+
+  DateTime date;
+  TimeOfDay start;
+  TimeOfDay end;
+}
+
+String? validateReservationDates({
+  required List<DateTime> dates,
+  required int durationDays,
+  DateTime? today,
+}) {
+  if (durationDays < 1 || durationDays > 7 || dates.length != durationDays) {
+    return 'Choose between 1 and 7 event days.';
+  }
+  final now = today ?? DateTime.now();
+  final firstAllowed = DateTime(now.year, now.month, now.day);
+  for (var index = 0; index < dates.length; index++) {
+    final date = DateTime(
+      dates[index].year,
+      dates[index].month,
+      dates[index].day,
+    );
+    if (date.isBefore(firstAllowed)) return 'Choose today or a future date.';
+    if (index > 0) {
+      final previous = DateTime(
+        dates[index - 1].year,
+        dates[index - 1].month,
+        dates[index - 1].day,
+      );
+      if (!date.isAfter(previous)) {
+        return 'Event dates must be in strictly increasing order.';
+      }
+    }
+  }
+  return null;
 }
 
 String? validateReservationWindow({

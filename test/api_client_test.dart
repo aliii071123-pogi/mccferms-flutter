@@ -85,4 +85,65 @@ void main() {
     expect(facilities.single.name, 'Auditorium');
     expect(facilities.single.capacity, 120);
   });
+
+  test('requests calendar and managed organization choices', () async {
+    final requests = <http.Request>[];
+    final client = FermsApiClient(
+      baseUrl: 'https://ferms.example.test',
+      token: 'test-token',
+      client: MockClient((request) async {
+        requests.add(request);
+        return http.Response(
+          request.url.path.endsWith('/calendar')
+              ? '{"data":[{"facility":"Auditorium",'
+                    '"starts_at":"2026-11-20T08:00:00+08:00",'
+                    '"ends_at":"2026-11-20T10:00:00+08:00",'
+                    '"status":"pending"}]}'
+              : '{"data":[{"id":1,"name":"Student Council"}]}',
+          200,
+        );
+      }),
+    );
+    final repository = FermsRepository(client);
+
+    final calendar = await repository.calendar(DateTime(2026, 11));
+    final organizations = await repository.organizations();
+
+    expect(requests.first.url.queryParameters, {'month': '2026-11'});
+    expect(requests.first.headers['authorization'], 'Bearer test-token');
+    expect(calendar.single.displayStatus, 'Pending');
+    expect(organizations.single.name, 'Student Council');
+  });
+
+  test(
+    'suspension 403 invokes session handler and uses a safe message',
+    () async {
+      var suspensionHandled = false;
+      final client = FermsApiClient(
+        baseUrl: 'https://ferms.example.test',
+        token: 'test-token',
+        onAccountSuspended: (_) async {
+          suspensionHandled = true;
+        },
+        client: MockClient(
+          (_) async => http.Response(
+            '{"message":"Sensitive account-specific information"}',
+            403,
+          ),
+        ),
+      );
+
+      await expectLater(
+        client.get('/api/v1/calendar'),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.message,
+            'message',
+            contains('account is suspended'),
+          ),
+        ),
+      );
+      expect(suspensionHandled, isTrue);
+    },
+  );
 }

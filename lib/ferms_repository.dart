@@ -21,6 +21,22 @@ class FermsRepository {
           .map(Equipment.fromJson)
           .toList();
 
+  Future<List<Organization>> organizations() async =>
+      asJsonList(await api.get('/api/v1/organizations'))
+          .map(Organization.fromJson)
+          .toList();
+
+  Future<List<CalendarEntry>> calendar(DateTime month) async => asJsonList(
+    await api.get(
+      '/api/v1/calendar',
+      queryParameters: {
+        'month':
+            '${month.year.toString().padLeft(4, '0')}-'
+            '${month.month.toString().padLeft(2, '0')}',
+      },
+    ),
+  ).map(CalendarEntry.fromJson).toList();
+
   Future<List<Reservation>> reservations({bool history = false}) async =>
       asJsonList(
         await api.get(

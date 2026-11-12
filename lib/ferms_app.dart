@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api_client.dart';
 import 'auth_controller.dart';
+import 'calendar_page.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 import 'reservation_form.dart';
@@ -20,16 +22,41 @@ class FermsApp extends StatefulWidget {
 
 class _FermsAppState extends State<FermsApp> {
   late final AuthController _auth;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  bool _darkMode = false;
 
   @override
   void initState() {
     super.initState();
+    _loadTheme();
     _auth = AuthController(
       api: widget.api,
       repository: widget.repository,
       baseUrl: const String.fromEnvironment('API_BASE_URL'),
     )..addListener(_onAuthChanged);
     _auth.initialize();
+  }
+
+  Future<void> _loadTheme() async {
+    final value = await _storage.read(key: 'ferms_dark_mode');
+    if (mounted && value != null) {
+      setState(() => _darkMode = value == 'true');
+    }
+  }
+
+  Future<void> _setDarkMode(bool value) async {
+    try {
+      await _storage.write(key: 'ferms_dark_mode', value: '$value');
+      if (mounted) setState(() => _darkMode = value);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not save appearance preference: $error'),
+          ),
+        );
+      }
+    }
   }
 
   void _onAuthChanged() {
@@ -49,42 +76,55 @@ class _FermsAppState extends State<FermsApp> {
   Widget build(BuildContext context) => MaterialApp(
     title: 'MCC FERMS',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
+    theme: _buildTheme(Brightness.light),
+    darkTheme: _buildTheme(Brightness.dark),
+    themeMode: _darkMode ? ThemeMode.dark : ThemeMode.light,
+    home: _auth.loading
+        ? const _LoadingScreen()
+        : _auth.user == null
+        ? _SignInScreen(auth: _auth)
+        : _FermsHome(
+            auth: _auth,
+            repository: widget.repository,
+            darkMode: _darkMode,
+            onDarkModeChanged: _setDarkMode,
+          ),
+  );
+
+  ThemeData _buildTheme(Brightness brightness) {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF9E1B32),
+      primary: const Color(0xFF9E1B32),
+      brightness: brightness,
+      surface: brightness == Brightness.light ? const Color(0xFFFAFAF8) : null,
+    );
+    return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF9E1B32),
-        primary: const Color(0xFF9E1B32),
-        surface: const Color(0xFFFAFAF8),
-      ),
-      scaffoldBackgroundColor: const Color(0xFFFAFAF8),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFFFAFAF8),
-        foregroundColor: Color(0xFF25282A),
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: colorScheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
         surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+        fillColor: colorScheme.surface,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: Color(0xFFD8D8D5)),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: colorScheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: Color(0xFF9E1B32), width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
       ),
-    ),
-    home: _auth.loading
-        ? const _LoadingScreen()
-        : _auth.user == null
-        ? _SignInScreen(auth: _auth)
-        : _FermsHome(auth: _auth, repository: widget.repository),
-  );
+    );
+  }
 }
 
 class _SignInScreen extends StatelessWidget {
@@ -273,7 +313,7 @@ class _SignInCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(28),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(color: const Color(0xFFE9E6E3)),
       boxShadow: const [
@@ -364,9 +404,16 @@ class _SignInCard extends StatelessWidget {
 }
 
 class _FermsHome extends StatefulWidget {
-  const _FermsHome({required this.auth, required this.repository});
+  const _FermsHome({
+    required this.auth,
+    required this.repository,
+    required this.darkMode,
+    required this.onDarkModeChanged,
+  });
   final AuthController auth;
   final FermsRepository repository;
+  final bool darkMode;
+  final ValueChanged<bool> onDarkModeChanged;
 
   @override
   State<_FermsHome> createState() => _FermsHomeState();
@@ -421,6 +468,8 @@ class _FermsHomeState extends State<_FermsHome> {
         if (error is ApiException && error.profileRequired) {
           setState(() => _profileRequired = true);
           await _load(history: _history);
+        } else if (error is ApiException && error.statusCode == 403) {
+          return;
         } else {
           setState(() => _error = error.toString());
         }
@@ -432,7 +481,7 @@ class _FermsHomeState extends State<_FermsHome> {
 
   Future<void> _openRequest() async {
     if (_profileRequired || _user.profileIncomplete) {
-      setState(() => _section = 3);
+      setState(() => _section = 4);
       return;
     }
     final changed = await Navigator.of(context).push<bool>(
@@ -494,6 +543,17 @@ class _FermsHomeState extends State<_FermsHome> {
                 ),
               const SizedBox(width: 8),
               Tooltip(
+                message: widget.darkMode ? 'Use light mode' : 'Use dark mode',
+                child: IconButton(
+                  onPressed: () => widget.onDarkModeChanged(!widget.darkMode),
+                  icon: Icon(
+                    widget.darkMode
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
+                  ),
+                ),
+              ),
+              Tooltip(
                 message: 'Sign out',
                 child: IconButton(
                   onPressed: widget.auth.signOut,
@@ -547,6 +607,11 @@ class _FermsHomeState extends State<_FermsHome> {
                     label: Text('Resources'),
                   ),
                   NavigationRailDestination(
+                    icon: Icon(Icons.calendar_month_outlined),
+                    selectedIcon: Icon(Icons.calendar_month),
+                    label: Text('Calendar'),
+                  ),
+                  NavigationRailDestination(
                     icon: Icon(Icons.account_circle_outlined),
                     selectedIcon: Icon(Icons.account_circle),
                     label: Text('Profile'),
@@ -591,6 +656,11 @@ class _FermsHomeState extends State<_FermsHome> {
                     label: 'Resources',
                   ),
                   NavigationDestination(
+                    icon: Icon(Icons.calendar_month_outlined),
+                    selectedIcon: Icon(Icons.calendar_month),
+                    label: 'Calendar',
+                  ),
+                  NavigationDestination(
                     icon: Icon(Icons.account_circle_outlined),
                     selectedIcon: Icon(Icons.account_circle),
                     label: 'Profile',
@@ -602,8 +672,10 @@ class _FermsHomeState extends State<_FermsHome> {
   );
 
   Widget _buildSection() {
-    if ((_profileRequired || _user.profileIncomplete) && _section != 3) {
-      return _ProfileRequired(onComplete: () => setState(() => _section = 3));
+    if ((_profileRequired || _user.profileIncomplete) &&
+        _section != 3 &&
+        _section != 4) {
+      return _ProfileRequired(onComplete: () => setState(() => _section = 4));
     }
     if (_loading && _reservations.isEmpty && _facilities.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -636,8 +708,10 @@ class _FermsHomeState extends State<_FermsHome> {
         equipment: _equipment,
         onRefresh: _load,
       ),
+      3 => CalendarPage(repository: widget.repository),
       _ => _ProfilePage(
         user: _user,
+        repository: widget.repository,
         onSave: _saveProfile,
         onSignOut: widget.auth.signOut,
       ),
@@ -689,7 +763,9 @@ class _DashboardPage extends StatelessWidget {
             user.canManageResources
                 ? 'Facility and equipment activity at a glance.'
                 : 'Your campus requests and available resources.',
-            style: const TextStyle(color: Color(0xFF687078)),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 22),
           LayoutBuilder(
@@ -776,7 +852,7 @@ class _DashboardPage extends StatelessWidget {
                   (reservation) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Material(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(8),
                       child: ListTile(
                         leading: const CircleAvatar(
@@ -828,7 +904,7 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       border: const Border.fromBorderSide(BorderSide(color: Color(0xFFE7E6E2))),
       borderRadius: BorderRadius.circular(8),
     ),
@@ -852,7 +928,10 @@ class _StatTile extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF687078)),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -865,11 +944,13 @@ class _StatTile extends StatelessWidget {
 class _ProfilePage extends StatefulWidget {
   const _ProfilePage({
     required this.user,
+    required this.repository,
     required this.onSave,
     required this.onSignOut,
   });
 
   final FermsUser user;
+  final FermsRepository repository;
   final Future<void> Function(String organization, String position) onSave;
   final VoidCallback onSignOut;
 
@@ -879,33 +960,69 @@ class _ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<_ProfilePage> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _organization;
+  static const _otherOrganization = '__other__';
+  late final TextEditingController _customOrganization;
   late final TextEditingController _position;
+  List<Organization> _organizations = const [];
+  String _selectedOrganization = '';
+  bool _loadingOrganizations = true;
+  String? _organizationError;
   bool _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _organization = TextEditingController(text: widget.user.organization);
+    _customOrganization = TextEditingController();
     _position = TextEditingController(text: widget.user.position);
+    _loadOrganizations();
+  }
+
+  Future<void> _loadOrganizations() async {
+    try {
+      final organizations = await widget.repository.organizations();
+      if (!mounted) return;
+      final matching = organizations
+          .where(
+            (organization) => organization.name == widget.user.organization,
+          )
+          .firstOrNull;
+      setState(() {
+        _organizations = organizations;
+        if (matching != null) {
+          _selectedOrganization = matching.name;
+        } else if (widget.user.organization.isNotEmpty) {
+          _selectedOrganization = _otherOrganization;
+          _customOrganization.text = widget.user.organization;
+        }
+        _loadingOrganizations = false;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _organizationError = error.toString();
+          _loadingOrganizations = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
-    _organization.dispose();
+    _customOrganization.dispose();
     _position.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     if (_saving || !_formKey.currentState!.validate()) return;
+    if (_selectedOrganization == _otherOrganization) return;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      await widget.onSave(_organization.text, _position.text);
+      await widget.onSave(_selectedOrganization, _position.text);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
@@ -943,17 +1060,71 @@ class _ProfilePageState extends State<_ProfilePage> {
           key: _formKey,
           child: Column(
             children: [
-              TextFormField(
-                controller: _organization,
-                enabled: !_saving,
-                maxLength: 160,
+              DropdownButtonFormField<String>(
+                key: ValueKey(_selectedOrganization),
+                initialValue: _selectedOrganization,
                 decoration: const InputDecoration(
                   labelText: 'Organization or institute council',
                 ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter your organization.'
+                items: [
+                  const DropdownMenuItem(
+                    value: '',
+                    child: Text('Choose an organization'),
+                  ),
+                  ..._organizations.map(
+                    (organization) => DropdownMenuItem(
+                      value: organization.name,
+                      child: Text(organization.name),
+                    ),
+                  ),
+                  const DropdownMenuItem(
+                    value: _otherOrganization,
+                    child: Text('Other (not listed)'),
+                  ),
+                ],
+                onChanged: _saving || _loadingOrganizations
+                    ? null
+                    : (value) =>
+                          setState(() => _selectedOrganization = value ?? ''),
+                validator: (_) => _selectedOrganization.isEmpty
+                    ? 'Choose your organization.'
                     : null,
               ),
+              if (_selectedOrganization == _otherOrganization) ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _customOrganization,
+                  enabled: !_saving,
+                  maxLength: 160,
+                  decoration: const InputDecoration(
+                    labelText: 'Custom organization',
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter your organization.'
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                const _ErrorBanner(
+                  'Custom organizations cannot be saved yet. The mobile profile API only accepts organizations from its managed list.',
+                ),
+              ],
+              if (_organizationError != null) ...[
+                const SizedBox(height: 10),
+                _ErrorBanner(
+                  'Could not load organization choices: $_organizationError',
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _loadingOrganizations = true;
+                      _organizationError = null;
+                    });
+                    _loadOrganizations();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry organization list'),
+                ),
+              ],
               const SizedBox(height: 12),
               TextFormField(
                 controller: _position,
@@ -972,7 +1143,13 @@ class _ProfilePageState extends State<_ProfilePage> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton.icon(
-                  onPressed: _saving ? null : _save,
+                  onPressed:
+                      _saving ||
+                          _loadingOrganizations ||
+                          _organizationError != null ||
+                          _selectedOrganization == _otherOrganization
+                      ? null
+                      : _save,
                   icon: const Icon(Icons.save_outlined),
                   label: Text(_saving ? 'Saving…' : 'Save profile'),
                 ),

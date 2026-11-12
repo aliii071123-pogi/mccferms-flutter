@@ -3,14 +3,19 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class FermsApiClient {
-  FermsApiClient({required String baseUrl, http.Client? client, this.token})
-    : _baseUri = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'),
-      _client = client ?? http.Client(),
-      _ownsClient = client == null;
+  FermsApiClient({
+    required String baseUrl,
+    http.Client? client,
+    this.token,
+    this.onAccountSuspended,
+  }) : _baseUri = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/'),
+       _client = client ?? http.Client(),
+       _ownsClient = client == null;
 
   final Uri _baseUri;
   final http.Client _client;
   final bool _ownsClient;
+  Future<void> Function(ApiException exception)? onAccountSuspended;
   String? token;
 
   Future<dynamic> get(String path, {Map<String, String>? queryParameters}) =>
@@ -47,7 +52,13 @@ class FermsApiClient {
     final response = await http.Response.fromStream(streamed);
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException.fromResponse(response.statusCode, decoded);
+      final exception = ApiException.fromResponse(response.statusCode, decoded);
+      if (response.statusCode == 403 &&
+          !exception.profileRequired &&
+          token != null) {
+        await onAccountSuspended?.call(exception);
+      }
+      throw exception;
     }
     return decoded;
   }
@@ -87,11 +98,14 @@ class ApiException implements Exception {
             : [value.toString()];
       }
     }
+    final profileRequired = body['profile_required'] == true;
     return ApiException(
       statusCode: statusCode,
-      message: body['message']?.toString() ?? 'Request failed ($statusCode).',
+      message: statusCode == 403 && !profileRequired
+          ? 'Your account is suspended. Contact MCC FERMS support for assistance.'
+          : body['message']?.toString() ?? 'Request failed ($statusCode).',
       errors: errors,
-      profileRequired: body['profile_required'] == true,
+      profileRequired: profileRequired,
     );
   }
 

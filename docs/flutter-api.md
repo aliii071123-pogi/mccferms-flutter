@@ -33,8 +33,10 @@ Send `Accept: application/json` and `Authorization: Bearer <token>` on authentic
 | DELETE | `/api/v1/auth/session` | Revoke the current token |
 | GET | `/api/v1/dashboard` | Dashboard counts |
 | PUT | `/api/v1/profile` | Update a student's organization and position |
+| GET | `/api/v1/organizations` | Managed organization choices for profile selection |
 | GET | `/api/v1/facilities` | Facilities and upcoming schedule blocks |
 | GET | `/api/v1/equipment` | Equipment inventory and upcoming borrowing blocks |
+| GET | `/api/v1/calendar?month=YYYY-MM` | Privacy-safe facility availability for the requested month |
 | GET | `/api/v1/reservations` | Current user's requests, or all requests for staff/admin |
 | POST | `/api/v1/reservations` | Create a request |
 | GET | `/api/v1/reservations/{id}` | Request details |
@@ -45,7 +47,36 @@ Send `Accept: application/json` and `Authorization: Bearer <token>` on authentic
 | POST/PUT/DELETE | `/api/v1/facilities[/{id}]` | Staff+ facility management |
 | POST/PUT/DELETE | `/api/v1/equipment[/{id}]` | Staff+ equipment management |
 
-Reservation creation fields are `facility_id` (nullable when borrowing equipment only), `date` (`YYYY-MM-DD`), `start_time` and `end_time` (`HH:mm`, Manila local time), `pax`, `purpose`, `description`, and `equipment` (an object mapping equipment IDs to requested quantities). At least one facility or positive equipment quantity is required. Validation failures return `422` with field errors.
+Organization choices return `{"data":[{"id":1,"name":"..."}]}`. The mobile app submits the selected managed organization name through the existing profile API. Although the UI offers “Other (not listed),” the current `PUT /api/v1/profile` contract accepts only a name in the managed organization catalog; the app therefore requires a managed selection before saving. To enable custom names, extend `PUT /api/v1/profile` with an optional `custom_organization` string for the “Other” selection, validate it as required only for that selection, and persist it as the profile's organization so `/api/v1/me` returns it. The backend must explicitly decide whether custom names remain profile-only or are added to the managed organization catalog; the Flutter client does not assume either behavior.
+
+Reservation creation uses per-day schedule blocks; do not send the legacy single `date`, `start_time`, and `end_time` shape:
+
+```json
+{
+  "facility_id": 1,
+  "duration_days": 2,
+  "days": [
+    {"date":"2026-11-20","start_time":"08:00","end_time":"17:00"},
+    {"date":"2026-11-21","start_time":"08:00","end_time":"17:00"}
+  ],
+  "pax": 50,
+  "purpose": "Event name",
+  "description": "Event details",
+  "equipment": {"3": 2}
+}
+```
+
+`facility_id` is nullable for equipment-only requests. `duration_days` must be 1–7 and equal the number of `days` entries. Dates use `YYYY-MM-DD`, are today or later, and must be strictly increasing. Times use `HH:mm` Manila local time, from 08:00 through 20:00, with each end later than its start. At least one facility or positive equipment quantity is required. `pax`, purpose, description, and requested equipment quantities remain required according to existing validation. Responses include `data.schedules`; show those individual blocks for a user's own request details. Validation failures return `422` with field errors.
+
+Facility time conflicts return `422` with a `facility_conflict` validation error. Pending requests and approved bookings both block overlapping facility slots, and each event day is checked independently. The app presents a generic conflict message and directs users to facility staff; never expose another requester's identity, organization/institute, or activity in shared calendar or conflict UI.
+
+The authenticated calendar response is `{"data":[{"facility":"Facility name","starts_at":"ISO timestamp","ends_at":"ISO timestamp","status":"pending|approved"}]}`. It contains only facility name, date/time, and status; render `pending` as “Pending” and `approved` as “Booked.” Do not add requester, organization/institute, purpose/activity, or other reservation details to this endpoint or UI.
+
+Equipment may include optional `category`, `staff_in_charge`, quantity/availability, notes, and schedule blocks. Categories may be null; the app filters the loaded catalog locally and includes an “Uncategorized” choice.
+
+An authenticated API `403` without `profile_required: true` denotes a suspended account; clear the local session and show a suspended/signed-out state rather than retrying as a network error. `403` with `profile_required: true` continues to mean the student profile is incomplete.
+
+There are no documented mobile API endpoints for super-admin user suspension/deletion or organization-choice create/delete. Those operations remain web-only; do not add mobile CRUD requests until the backend publishes and implements those API contracts.
 
 Use `GET /api/v1/reservations?view=history` for completed/closed history; the default lists upcoming and pending requests. Admin review payload: `{"status":"approved"}` or `{"status":"rejected"}`.
 

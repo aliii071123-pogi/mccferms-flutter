@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'calendar_page.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 
@@ -25,10 +26,27 @@ class ResourcesPage extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Resources',
-          style: Theme.of(context).textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w800),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            Text(
+              'Resources',
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => CalendarPage(repository: repository),
+                ),
+              ),
+              icon: const Icon(Icons.calendar_month_outlined),
+              label: const Text('Facility calendar'),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         const TabBar(
@@ -138,7 +156,7 @@ class _FacilityList extends StatelessWidget {
   }
 }
 
-class _EquipmentList extends StatelessWidget {
+class _EquipmentList extends StatefulWidget {
   const _EquipmentList({
     required this.repository,
     required this.user,
@@ -152,59 +170,146 @@ class _EquipmentList extends StatelessWidget {
   final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      if (user.canManageResources)
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: () => _editEquipment(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Add equipment'),
+  State<_EquipmentList> createState() => _EquipmentListState();
+}
+
+class _EquipmentListState extends State<_EquipmentList> {
+  String _query = '';
+  String _category = '*';
+
+  List<Equipment> get _filteredEquipment {
+    final query = _query.trim().toLowerCase();
+    return widget.equipment.where((item) {
+      final matchesCategory = switch (_category) {
+        '*' => true,
+        '' => item.category == null || item.category!.trim().isEmpty,
+        _ => item.category == _category,
+      };
+      final searchable =
+          '${item.name} ${item.description} ${item.notes} ${item.staffInCharge}'
+              .toLowerCase();
+      return matchesCategory && (query.isEmpty || searchable.contains(query));
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final categories =
+        widget.equipment
+            .map((item) => item.category?.trim() ?? '')
+            .where((category) => category.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final filtered = _filteredEquipment;
+    return Column(
+      children: [
+        if (widget.user.canManageResources)
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: () => _editEquipment(context),
+                icon: const Icon(Icons.add),
+                label: const Text('Add equipment'),
+              ),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 8),
+          child: Column(
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Search equipment',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) => setState(() => _query = value),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _category,
+                decoration: const InputDecoration(labelText: 'Category'),
+                items: [
+                  const DropdownMenuItem(
+                    value: '*',
+                    child: Text('All categories'),
+                  ),
+                  ...categories.map(
+                    (category) => DropdownMenuItem(
+                      value: category,
+                      child: Text(category),
+                    ),
+                  ),
+                  if (widget.equipment.any(
+                    (item) =>
+                        item.category == null || item.category!.trim().isEmpty,
+                  ))
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('Uncategorized'),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _category = value ?? '*'),
+              ),
+            ],
           ),
         ),
-      Expanded(
-        child: equipment.isEmpty
-            ? const _EmptyResources('No equipment is available.')
-            : RefreshIndicator(
-                onRefresh: onRefresh,
-                child: ListView.separated(
-                  padding: const EdgeInsets.only(top: 10, bottom: 24),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemCount: equipment.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final item = equipment[index];
-                    return _ResourceTile(
-                      title: item.name,
-                      subtitle: item.description,
-                      icon: Icons.inventory_2_outlined,
-                      detail:
-                          '${item.availableQuantity} available of ${item.quantity}',
-                      schedule: item.schedule,
-                      managed: user.canManageResources,
-                      onEdit: () => _editEquipment(context, item),
-                      onDelete: () => _deleteResource(
-                        context,
+        Expanded(
+          child: widget.equipment.isEmpty
+              ? const _EmptyResources('No equipment is available.')
+              : filtered.isEmpty
+              ? const _EmptyResources('No equipment matches these filters.')
+              : RefreshIndicator(
+                  onRefresh: widget.onRefresh,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(top: 10, bottom: 24),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = filtered[index];
+                      return _ResourceTile(
                         title: item.name,
-                        delete: () => repository.deleteEquipment(item.id),
-                        onRefresh: onRefresh,
-                      ),
-                    );
-                  },
+                        subtitle: [
+                          if (item.description.isNotEmpty) item.description,
+                          if (item.notes.isNotEmpty) item.notes,
+                        ].join('\n'),
+                        icon: Icons.inventory_2_outlined,
+                        detail: [
+                          '${item.availableQuantity} available of ${item.quantity}',
+                          if (item.category?.isNotEmpty == true) item.category!,
+                          if (item.staffInCharge.isNotEmpty)
+                            'Staff: ${item.staffInCharge}',
+                        ].join(' · '),
+                        schedule: item.schedule,
+                        managed: widget.user.canManageResources,
+                        onEdit: () => _editEquipment(context, item),
+                        onDelete: () => _deleteResource(
+                          context,
+                          title: item.name,
+                          delete: () =>
+                              widget.repository.deleteEquipment(item.id),
+                          onRefresh: widget.onRefresh,
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-      ),
-    ],
-  );
+        ),
+      ],
+    );
+  }
 
   Future<void> _editEquipment(BuildContext context, [Equipment? item]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _ResourceForm(repository: repository, equipment: item),
+        builder: (_) =>
+            _ResourceForm(repository: widget.repository, equipment: item),
       ),
     );
-    if (changed == true) await onRefresh();
+    if (changed == true) await widget.onRefresh();
   }
 }
 
@@ -231,7 +336,7 @@ class _ResourceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.white,
+    color: Theme.of(context).colorScheme.surface,
     borderRadius: BorderRadius.circular(8),
     child: Padding(
       padding: const EdgeInsets.all(16),
@@ -258,12 +363,20 @@ class _ResourceTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         subtitle,
-                        style: const TextStyle(color: Color(0xFF687078)),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                     if (detail.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Text(detail, style: const TextStyle(fontSize: 12)),
+                      Text(
+                        detail,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -302,23 +415,22 @@ class _ResourceTile extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.event_busy_outlined,
-                      size: 15,
-                      color: Color(0xFF687078),
-                    ),
+                    const Icon(Icons.event_busy_outlined, size: 15),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         '$date  $start–$end',
-                        style: const TextStyle(fontSize: 12),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                     ),
                     Text(
                       status,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF687078),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
