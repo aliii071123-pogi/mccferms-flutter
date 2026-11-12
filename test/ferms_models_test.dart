@@ -96,4 +96,21 @@ void main() {
     expect(equipment.staffInCharge, 'Facilities Desk');
     expect(equipment.notes, 'HDMI available');
   });
+
+  test('facility parses form fields and availability', () {
+    final facility = Facility.fromJson({
+      'id': 5,
+      'name': 'Auditorium',
+      'location': 'Main Building',
+      'staff_in_charge': 'Facilities Desk',
+      'capacity': 300,
+      'active': false,
+      'notes': 'Use the east entrance',
+    });
+
+    expect(facility.location, 'Main Building');
+    expect(facility.staffInCharge, 'Facilities Desk');
+    expect(facility.active, isFalse);
+    expect(facility.notes, 'Use the east entrance');
+  });
 }

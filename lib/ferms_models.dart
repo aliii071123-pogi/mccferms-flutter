@@ -88,6 +88,8 @@ class Facility {
     this.description = '',
     this.capacity = 0,
     this.location = '',
+    this.staffInCharge = '',
+    this.notes = '',
     this.active = true,
     this.schedule = const [],
   });
@@ -97,6 +99,8 @@ class Facility {
   final String description;
   final int capacity;
   final String location;
+  final String staffInCharge;
+  final String notes;
   final bool active;
   final List<JsonMap> schedule;
 
@@ -106,6 +110,12 @@ class Facility {
     description: stringValue(json['description']),
     capacity: intValue(json['capacity'] ?? json['pax']),
     location: stringValue(json['location']),
+    staffInCharge: stringValue(
+      json['staff_in_charge'] is Map
+          ? asJsonMap(json['staff_in_charge'])['name']
+          : json['staff_in_charge'],
+    ),
+    notes: stringValue(json['notes']),
     active: json['active'] != false && json['is_active'] != false,
     schedule: scheduleBlocks(json),
   );

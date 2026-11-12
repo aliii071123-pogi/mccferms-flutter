@@ -121,12 +121,16 @@ class _FacilityList extends StatelessWidget {
                     final facility = facilities[index];
                     return _ResourceTile(
                       title: facility.name,
-                      subtitle: facility.description,
+                      subtitle: facility.notes.isNotEmpty
+                          ? facility.notes
+                          : facility.description,
                       icon: Icons.apartment_outlined,
                       detail: [
                         if (facility.capacity > 0)
                           '${facility.capacity} people',
                         if (facility.location.isNotEmpty) facility.location,
+                        if (facility.staffInCharge.isNotEmpty)
+                          'Staff: ${facility.staffInCharge}',
                       ].join(' · '),
                       schedule: facility.schedule,
                       managed: user.canManageResources,
@@ -148,8 +152,11 @@ class _FacilityList extends StatelessWidget {
   Future<void> _editFacility(BuildContext context, [Facility? facility]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            _ResourceForm(repository: repository, facility: facility),
+        builder: (_) => _ResourceForm(
+          repository: repository,
+          facility: facility,
+          isFacility: true,
+        ),
       ),
     );
     if (changed == true) await onRefresh();
@@ -305,8 +312,11 @@ class _EquipmentListState extends State<_EquipmentList> {
   Future<void> _editEquipment(BuildContext context, [Equipment? item]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            _ResourceForm(repository: widget.repository, equipment: item),
+        builder: (_) => _ResourceForm(
+          repository: widget.repository,
+          equipment: item,
+          isFacility: false,
+        ),
       ),
     );
     if (changed == true) await widget.onRefresh();
@@ -445,7 +455,14 @@ class _ResourceTile extends StatelessWidget {
 }
 
 class _ResourceForm extends StatefulWidget {
-  const _ResourceForm({this.repository, this.facility, this.equipment});
+  const _ResourceForm({
+    required this.isFacility,
+    this.repository,
+    this.facility,
+    this.equipment,
+  });
+
+  final bool isFacility;
   final FermsRepository? repository;
   final Facility? facility;
   final Equipment? equipment;
@@ -457,12 +474,16 @@ class _ResourceForm extends StatefulWidget {
 class _ResourceFormState extends State<_ResourceForm> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _name;
-  late final TextEditingController _description;
+  late final TextEditingController _location;
+  late final TextEditingController _category;
+  late final TextEditingController _staffInCharge;
+  late final TextEditingController _notes;
   late final TextEditingController _quantity;
+  bool _active = true;
   bool _saving = false;
   String? _error;
 
-  bool get _isFacility => widget.facility != null || widget.equipment == null;
+  bool get _isFacility => widget.isFacility;
   String get _title => _isFacility ? 'facility' : 'equipment';
 
   @override
@@ -471,8 +492,17 @@ class _ResourceFormState extends State<_ResourceForm> {
     _name = TextEditingController(
       text: widget.facility?.name ?? widget.equipment?.name,
     );
-    _description = TextEditingController(
-      text: widget.facility?.description ?? widget.equipment?.description,
+    _location = TextEditingController(text: widget.facility?.location);
+    _category = TextEditingController(text: widget.equipment?.category);
+    _staffInCharge = TextEditingController(
+      text: widget.facility?.staffInCharge ?? widget.equipment?.staffInCharge,
+    );
+    _notes = TextEditingController(
+      text:
+          widget.facility?.notes ??
+          widget.facility?.description ??
+          widget.equipment?.notes ??
+          widget.equipment?.description,
     );
     _quantity = TextEditingController(
       text: widget.facility != null
@@ -481,12 +511,16 @@ class _ResourceFormState extends State<_ResourceForm> {
           ? ''
           : '${widget.equipment!.quantity}',
     );
+    _active = widget.facility?.active ?? widget.equipment?.active ?? true;
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _description.dispose();
+    _location.dispose();
+    _category.dispose();
+    _staffInCharge.dispose();
+    _notes.dispose();
     _quantity.dispose();
     super.dispose();
   }
@@ -497,11 +531,18 @@ class _ResourceFormState extends State<_ResourceForm> {
       _saving = true;
       _error = null;
     });
+    final category = _category.text.trim();
     final payload = <String, dynamic>{
       'name': _name.text.trim(),
-      'description': _description.text.trim(),
+      'staff_in_charge': _staffInCharge.text.trim(),
+      'notes': _notes.text.trim(),
+      'active': _active,
       if (_isFacility) 'capacity': int.parse(_quantity.text),
-      if (!_isFacility) 'quantity': int.parse(_quantity.text),
+      if (_isFacility) 'location': _location.text.trim(),
+      if (!_isFacility) ...{
+        'category': category.isEmpty ? null : category,
+        'quantity': int.parse(_quantity.text),
+      },
     };
     try {
       if (_isFacility) {
@@ -539,19 +580,41 @@ class _ResourceFormState extends State<_ResourceForm> {
                 controller: _name,
                 enabled: !_saving,
                 maxLength: 120,
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(
+                  labelText: _isFacility ? 'Facility name' : 'Equipment name',
+                ),
                 validator: (value) => value == null || value.trim().isEmpty
                     ? 'Enter a name.'
                     : null,
               ),
+              if (_isFacility) ...[
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _location,
+                  enabled: !_saving,
+                  maxLength: 160,
+                  decoration: const InputDecoration(
+                    labelText: 'Building / location',
+                  ),
+                ),
+              ],
+              if (!_isFacility) ...[
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _category,
+                  enabled: !_saving,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    labelText: 'Category (optional)',
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               TextFormField(
-                controller: _description,
+                controller: _staffInCharge,
                 enabled: !_saving,
-                minLines: 2,
-                maxLines: 4,
-                maxLength: 1000,
-                decoration: const InputDecoration(labelText: 'Description'),
+                maxLength: 160,
+                decoration: const InputDecoration(labelText: 'Staff in charge'),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -559,7 +622,7 @@ class _ResourceFormState extends State<_ResourceForm> {
                 enabled: !_saving,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: _isFacility ? 'Capacity' : 'Total quantity',
+                  labelText: _isFacility ? 'Capacity' : 'Quantity in inventory',
                 ),
                 validator: (value) {
                   final number = int.tryParse(value ?? '');
@@ -568,6 +631,27 @@ class _ResourceFormState extends State<_ResourceForm> {
                   }
                   return null;
                 },
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<bool>(
+                initialValue: _active,
+                decoration: const InputDecoration(labelText: 'Availability'),
+                items: const [
+                  DropdownMenuItem(value: true, child: Text('Available')),
+                  DropdownMenuItem(value: false, child: Text('Unavailable')),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(() => _active = value ?? _active),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _notes,
+                enabled: !_saving,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Notes'),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

@@ -247,8 +247,8 @@ class _CalendarPageState extends State<CalendarPage> {
           )
         else if (!_loading && selectedEntries.isEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Text('No facility availability listed for this date.'),
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text('No reservation for this date'),
           )
         else
           Expanded(
