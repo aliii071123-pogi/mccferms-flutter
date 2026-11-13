@@ -76,51 +76,6 @@ class FermsRepository {
   Future<void> recommendReservation(String id) async =>
       api.post('/api/v1/reservations/$id/recommend');
 
-  Future<void> submitFeedback({
-    required FermsUser user,
-    required int rating,
-    required String comment,
-    required bool anonymous,
-  }) async {
-    if (rating < 1 || rating > 5 || comment.trim().isEmpty) {
-      throw ArgumentError('A 1–5 star rating and comment are required.');
-    }
-    if (anonymous && user.normalizedRole != 'student') {
-      throw ArgumentError('Only students may submit anonymous feedback.');
-    }
-    await api.post(
-      '/api/v1/feedback',
-      body: {
-        'rating': rating,
-        'comment': comment.trim(),
-        'anonymous': anonymous,
-      },
-    );
-  }
-
-  Future<FermsFeedbackPage> feedback({
-    required FermsUser user,
-    int page = 1,
-  }) async {
-    if (!user.canViewFeedback) {
-      throw const ApiException(
-        statusCode: 403,
-        message: 'Only Admins and IT Administrators can view feedback.',
-      );
-    }
-    final response = await api.get(
-      '/api/v1/feedback',
-      queryParameters: {'page': '$page'},
-    );
-    final json = asJsonMap(response);
-    return FermsFeedbackPage(
-      items: asJsonList(response).map(FermsFeedback.fromJson).toList(),
-      currentPage: intValue(json['current_page'], page),
-      lastPage: intValue(json['last_page'], 1),
-      total: intValue(json['total']),
-    );
-  }
-
   Future<void> deleteReservation(String id) async =>
       api.delete('/api/v1/reservations/$id');
 

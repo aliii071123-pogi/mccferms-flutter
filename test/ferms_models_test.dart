@@ -21,13 +21,10 @@ void main() {
     expect(staff.canManageResources, isTrue);
     expect(staff.canReviewRequests, isFalse);
     expect(staff.canRecommendReservations, isTrue);
-    expect(staff.canViewFeedback, isFalse);
     expect(admin.canReviewRequests, isTrue);
     expect(admin.canRecommendReservations, isFalse);
-    expect(admin.canViewFeedback, isTrue);
     expect(unsupportedAdminAlias.canReviewRequests, isFalse);
     expect(itAdmin.displayRole, 'IT Administrator');
-    expect(itAdmin.canViewFeedback, isTrue);
     expect(itAdmin.canRecommendReservations, isFalse);
     expect(itAdmin.canCreateItAdministrator(currentTotal: 2), isTrue);
     expect(itAdmin.canCreateItAdministrator(currentTotal: 3), isFalse);
@@ -113,22 +110,6 @@ void main() {
 
     expect(reservation.reviewedAt, isNotNull);
     expect(reservation.reviewerName, 'Admin Reviewer');
-  });
-
-  test('anonymous feedback never exposes an included user identity', () {
-    final feedback = FermsFeedback.fromJson({
-      'id': 23,
-      'rating': 5,
-      'comment': 'Helpful service.',
-      'anonymous': true,
-      'created_at': '2026-11-20T14:30:00+08:00',
-      'user': {'id': 7, 'name': 'Private Student'},
-    });
-
-    expect(feedback.isAnonymous, isTrue);
-    expect(feedback.submitterName, isEmpty);
-    expect(feedback.rating, 5);
-    expect(feedback.createdAt, isNotNull);
   });
 
   test('calendar entries expose only availability fields and map statuses', () {

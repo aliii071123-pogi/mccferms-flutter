@@ -45,8 +45,6 @@ Send `Accept: application/json` and `Authorization: Bearer <token>` on authentic
 | PUT | `/api/v1/reservations/{id}/decision` | Admin approval/rejection |
 | DELETE | `/api/v1/reservations/{id}` | Admin request deletion |
 | POST | `/api/v1/reservations/{id}/recommend` | Staff approval recommendation (Laravel API addition required) |
-| POST | `/api/v1/feedback` | Submit a rating and comment (Laravel API addition required) |
-| GET | `/api/v1/feedback` | Admin / IT Administrator feedback inbox (Laravel API addition required) |
 | POST/PUT/DELETE | `/api/v1/facilities[/{id}]` | Staff+ facility management |
 | POST/PUT/DELETE | `/api/v1/equipment[/{id}]` | Staff+ equipment management |
 
@@ -91,14 +89,7 @@ Add `POST /api/v1/reservations/{reservation}/recommend` inside the `auth:sanctum
 
 For authorized reservation list/detail data, include `reviewed_at`, `reviewer` (or `reviewer_name`), `recommended_by`, `recommended_at`, and `recommender` (or `recommender_name`). The inspected Laravel list eager-loads the requester but not the reviewer/recommender; add the needed eager loads/serialization. Preserve the existing student `user_id` filter for list and detail authorization. Flutter also filters student list results by `user_id`/nested `user.id` and fails closed if owner ID is absent, but that is only defense in depth—the server must not return another student's request or metadata in the first place.
 
-### Feedback
-
-Add authenticated, active-account routes:
-
-- `POST /api/v1/feedback` for any signed-in role, validating `rating` as required integer `1..5`, `comment` as required non-empty string (maximum 5000 characters), and optional `anonymous` boolean.
-- `GET /api/v1/feedback?page={page}` under `role:admin,super_admin` only, using Laravel's standard paginator response.
-
-The submission JSON is `{"rating": 1, "comment": "...", "anonymous": false}`. Accept `anonymous: true` only for students, persist no user association (including no user ID in the API response), and reject `anonymous: true` for every other role. Flutter sends only those three fields; it does not send an ID or retain anonymous sender details in feedback state. A created record uses `{"data": {"id": ..., "rating": ..., "comment": ..., "anonymous": ..., "created_at": ..., "user": ...}}`, with `user: null` for anonymous feedback. The list follows Laravel paginator shape: `{"data": [...], "current_page": 1, "last_page": 1, "per_page": 12, "total": 0, ...}`. Do not add feedback to dashboard, reservation, or other general API payloads, and never permit Staff or Students to read the feedback list.
+Feedback submission and viewing are not available in the Flutter app. The inspected Laravel API also has no feedback API route; the web feedback pages remain separate.
 
 Account-management APIs are also absent from the mobile route list. The app therefore does not expose mobile account CRUD; keep account management limited to IT Administrators in the web client until the backend publishes protected mobile endpoints. The server remains responsible for enforcing the maximum of three IT Administrators.
 

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:mcc_ferms_flutter/api_client.dart';
 import 'package:mcc_ferms_flutter/ferms_animations.dart';
-import 'package:mcc_ferms_flutter/feedback_page.dart';
 import 'package:mcc_ferms_flutter/ferms_models.dart';
 import 'package:mcc_ferms_flutter/ferms_repository.dart';
 import 'package:mcc_ferms_flutter/reservations_page.dart';
@@ -128,58 +127,6 @@ void main() {
 
     expect(find.textContaining('Decision approved'), findsOneWidget);
     expect(find.textContaining('Admin Reviewer'), findsOneWidget);
-  });
-
-  testWidgets('student can choose anonymity, while staff cannot', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: FeedbackPage(
-          repository: _repository(),
-          user: FermsUser.fromJson({'id': 7, 'role': 'student'}),
-        ),
-      ),
-    );
-    expect(find.text('Submit anonymously'), findsOneWidget);
-    expect(find.text('Feedback inbox'), findsNothing);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: FeedbackPage(
-          repository: _repository(),
-          user: FermsUser.fromJson({'id': 8, 'role': 'staff'}),
-        ),
-      ),
-    );
-    expect(find.text('Submit anonymously'), findsNothing);
-    expect(find.text('Feedback inbox'), findsNothing);
-  });
-
-  testWidgets('feedback inbox selector is visible only to administrators', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: FeedbackPage(
-          repository: _repository(),
-          user: FermsUser.fromJson({'id': 9, 'role': 'super_admin'}),
-        ),
-      ),
-    );
-
-    expect(find.text('Feedback inbox'), findsOneWidget);
-    expect(find.text('Submit anonymously'), findsNothing);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: FeedbackPage(
-          repository: _repository(),
-          user: FermsUser.fromJson({'id': 10, 'role': 'admin'}),
-        ),
-      ),
-    );
-    expect(find.text('Feedback inbox'), findsOneWidget);
   });
 }
 

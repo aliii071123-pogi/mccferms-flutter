@@ -66,11 +66,6 @@ class FermsUser {
 
   bool get canRecommendReservations => normalizedRole == 'staff';
 
-  bool get canSubmitFeedback => true;
-
-  bool get canViewFeedback =>
-      const {'admin', 'super_admin'}.contains(normalizedRole);
-
   String get displayRole => switch (normalizedRole) {
     'super_admin' => 'IT Administrator',
     'admin' || 'administrator' => 'Admin',
@@ -404,54 +399,4 @@ class Reservation {
 DateTime? _dateTimeOrNull(dynamic value) {
   if (value is! String || value.isEmpty) return null;
   return DateTime.tryParse(value);
-}
-
-class FermsFeedback {
-  const FermsFeedback({
-    required this.id,
-    required this.rating,
-    required this.comment,
-    required this.isAnonymous,
-    required this.createdAt,
-    this.submitterName = '',
-  });
-
-  final String id;
-  final int rating;
-  final String comment;
-  final bool isAnonymous;
-  final DateTime? createdAt;
-  final String submitterName;
-
-  factory FermsFeedback.fromJson(JsonMap json) {
-    final anonymous = json['is_anonymous'] == true || json['anonymous'] == true;
-    final user = asJsonMap(json['user']);
-    return FermsFeedback(
-      id: stringValue(json['id']),
-      rating: intValue(json['rating']),
-      comment: stringValue(json['comment']),
-      isAnonymous: anonymous,
-      createdAt: _dateTimeOrNull(json['created_at']),
-      submitterName: anonymous
-          ? ''
-          : stringValue(json['submitter_name'] ?? user['name']),
-    );
-  }
-}
-
-class FermsFeedbackPage {
-  const FermsFeedbackPage({
-    required this.items,
-    required this.currentPage,
-    required this.lastPage,
-    required this.total,
-  });
-
-  final List<FermsFeedback> items;
-  final int currentPage;
-  final int lastPage;
-  final int total;
-
-  bool get hasPreviousPage => currentPage > 1;
-  bool get hasNextPage => currentPage < lastPage;
 }

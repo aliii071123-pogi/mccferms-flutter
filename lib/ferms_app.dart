@@ -5,7 +5,6 @@ import 'api_client.dart';
 import 'auth_controller.dart';
 import 'calendar_page.dart';
 import 'ferms_animations.dart';
-import 'feedback_page.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 import 'reservation_form.dart';
@@ -1017,12 +1016,6 @@ class _ProfilePageState extends State<_ProfilePage> {
   bool _saving = false;
   String? _error;
 
-  Future<void> _openFeedback() => Navigator.of(context).push<void>(
-    fermsPageRoute<void>(
-      FeedbackPage(repository: widget.repository, user: widget.user),
-    ),
-  );
-
   @override
   void initState() {
     super.initState();
@@ -1101,23 +1094,6 @@ class _ProfilePageState extends State<_ProfilePage> {
       ),
       const SizedBox(height: 8),
       Text('Role: ${widget.user.displayRole}'),
-      const SizedBox(height: 8),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.rate_review_outlined),
-        title: Text(
-          widget.user.canViewFeedback
-              ? 'Feedback inbox and submission'
-              : 'Send feedback',
-        ),
-        subtitle: Text(
-          widget.user.canViewFeedback
-              ? 'View feedback or submit your own.'
-              : 'Share a rating and comment with the administrators.',
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: _openFeedback,
-      ),
       if (widget.user.normalizedRole == 'student') ...[
         const SizedBox(height: 24),
         Text(
