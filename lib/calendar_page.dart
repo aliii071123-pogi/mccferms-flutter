@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'ferms_animations.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 
@@ -142,7 +143,7 @@ class _CalendarPageState extends State<CalendarPage> {
                     final isToday = _sameDate(date, today);
                     final dayEntries = _entriesFor(date);
                     final hasPending = dayEntries.any(
-                      (entry) => entry.status == 'pending',
+                      (entry) => entry.isPendingAvailability,
                     );
                     final hasBooked = dayEntries.any(
                       (entry) => entry.status == 'approved',
@@ -229,7 +230,7 @@ class _CalendarPageState extends State<CalendarPage> {
               ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
-        if (_loading) const LinearProgressIndicator(),
+        if (_loading) const Center(child: FermsLoadingIndicator(size: 28)),
         if (_error != null)
           Card(
             child: ListTile(

@@ -11,11 +11,28 @@ void main() {
     });
     final staff = FermsUser.fromJson({'id': 6, 'role': 'staff'});
     final admin = FermsUser.fromJson({'id': 7, 'role': 'admin'});
+    final itAdmin = FermsUser.fromJson({'id': 8, 'role': 'super_admin'});
+    final unsupportedAdminAlias = FermsUser.fromJson({
+      'id': 9,
+      'role': 'administrator',
+    });
 
     expect(incomplete.profileIncomplete, isTrue);
     expect(staff.canManageResources, isTrue);
     expect(staff.canReviewRequests, isFalse);
+    expect(staff.canRecommendReservations, isTrue);
+    expect(staff.canViewFeedback, isFalse);
     expect(admin.canReviewRequests, isTrue);
+    expect(admin.canRecommendReservations, isFalse);
+    expect(admin.canViewFeedback, isTrue);
+    expect(unsupportedAdminAlias.canReviewRequests, isFalse);
+    expect(itAdmin.displayRole, 'IT Administrator');
+    expect(itAdmin.canViewFeedback, isTrue);
+    expect(itAdmin.canRecommendReservations, isFalse);
+    expect(itAdmin.canCreateItAdministrator(currentTotal: 2), isTrue);
+    expect(itAdmin.canCreateItAdministrator(currentTotal: 3), isFalse);
+    expect(itAdmin.canCreateItAdministrator(currentTotal: -1), isFalse);
+    expect(admin.canCreateItAdministrator(currentTotal: 1), isFalse);
   });
 
   test('facility parses upcoming schedule blocks', () {
@@ -70,6 +87,50 @@ void main() {
     expect(reservation.schedules.last.startTime, '13:00');
   });
 
+  test('reservation parses decision timestamp and staff recommendation', () {
+    final reservation = Reservation.fromJson({
+      'id': 13,
+      'status': 'recommended',
+      'recommended_by': 5,
+      'recommended_at': '2026-11-19T10:00:00+08:00',
+      'recommender': {'id': 5, 'name': 'Staff Reviewer'},
+    });
+
+    expect(reservation.recommendationStatus, 'recommended');
+    expect(reservation.isAwaitingDecision, isTrue);
+    expect(reservation.recommenderId, '5');
+    expect(reservation.recommendedAt, isNotNull);
+    expect(reservation.recommenderName, 'Staff Reviewer');
+  });
+
+  test('reservation retains authorized decision timestamp and reviewer', () {
+    final reservation = Reservation.fromJson({
+      'id': 14,
+      'status': 'approved',
+      'reviewed_at': '2026-11-20T14:30:00+08:00',
+      'reviewer': {'id': 4, 'name': 'Admin Reviewer'},
+    });
+
+    expect(reservation.reviewedAt, isNotNull);
+    expect(reservation.reviewerName, 'Admin Reviewer');
+  });
+
+  test('anonymous feedback never exposes an included user identity', () {
+    final feedback = FermsFeedback.fromJson({
+      'id': 23,
+      'rating': 5,
+      'comment': 'Helpful service.',
+      'anonymous': true,
+      'created_at': '2026-11-20T14:30:00+08:00',
+      'user': {'id': 7, 'name': 'Private Student'},
+    });
+
+    expect(feedback.isAnonymous, isTrue);
+    expect(feedback.submitterName, isEmpty);
+    expect(feedback.rating, 5);
+    expect(feedback.createdAt, isNotNull);
+  });
+
   test('calendar entries expose only availability fields and map statuses', () {
     final entry = CalendarEntry.fromJson({
       'facility': 'Auditorium',
@@ -81,6 +142,15 @@ void main() {
     expect(entry.facility, 'Auditorium');
     expect(entry.displayStatus, 'Booked');
     expect(entry.startsAt.hour, 8);
+
+    final recommended = CalendarEntry.fromJson({
+      'facility': 'Auditorium',
+      'starts_at': '2026-11-21T08:00:00+08:00',
+      'ends_at': '2026-11-21T10:00:00+08:00',
+      'status': 'recommended',
+    });
+    expect(recommended.displayStatus, 'Pending');
+    expect(recommended.isPendingAvailability, isTrue);
   });
 
   test('equipment parses optional category, staff, and notes', () {

@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_client.dart';
 import 'auth_controller.dart';
 import 'calendar_page.dart';
+import 'ferms_animations.dart';
+import 'feedback_page.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 import 'reservation_form.dart';
@@ -20,7 +22,7 @@ class FermsApp extends StatefulWidget {
   State<FermsApp> createState() => _FermsAppState();
 }
 
-class _FermsAppState extends State<FermsApp> {
+class _FermsAppState extends State<FermsApp> with WidgetsBindingObserver {
   late final AuthController _auth;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   bool _darkMode = false;
@@ -28,6 +30,7 @@ class _FermsAppState extends State<FermsApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadTheme();
     _auth = AuthController(
       api: widget.api,
@@ -35,6 +38,11 @@ class _FermsAppState extends State<FermsApp> {
       baseUrl: const String.fromEnvironment('API_BASE_URL'),
     )..addListener(_onAuthChanged);
     _auth.initialize();
+  }
+
+  @override
+  void didChangeAccessibilityFeatures() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadTheme() async {
@@ -68,6 +76,7 @@ class _FermsAppState extends State<FermsApp> {
     _auth
       ..removeListener(_onAuthChanged)
       ..dispose();
+    WidgetsBinding.instance.removeObserver(this);
     widget.api.close();
     super.dispose();
   }
@@ -79,6 +88,15 @@ class _FermsAppState extends State<FermsApp> {
     theme: _buildTheme(Brightness.light),
     darkTheme: _buildTheme(Brightness.dark),
     themeMode: _darkMode ? ThemeMode.dark : ThemeMode.light,
+    themeAnimationDuration:
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .accessibilityFeatures
+            .disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 650),
+    themeAnimationCurve: Curves.easeInOut,
     home: _auth.loading
         ? const _LoadingScreen()
         : _auth.user == null
@@ -93,8 +111,8 @@ class _FermsAppState extends State<FermsApp> {
 
   ThemeData _buildTheme(Brightness brightness) {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF9E1B32),
-      primary: const Color(0xFF9E1B32),
+      seedColor: const Color(0xFF1769AA),
+      primary: const Color(0xFF1769AA),
       brightness: brightness,
       surface: brightness == Brightness.light ? const Color(0xFFFAFAF8) : null,
     );
@@ -133,7 +151,7 @@ class _SignInScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF6F5F2),
+    backgroundColor: const Color(0xFFF3F7FC),
     body: SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -150,42 +168,51 @@ class _SignInScreen extends StatelessWidget {
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Color(0xFFB2223E), Color(0xFF781329)],
+                        colors: [Color(0xFF287FC1), Color(0xFF0B3768)],
                       ),
                     ),
                     padding: const EdgeInsets.all(56),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         _BrandLockup(onDark: true),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Your campus,\nready when you are.',
-                              style: TextStyle(
-                                fontSize: 42,
-                                height: 1.12,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                        FermsAppear(
+                          index: 1,
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.account_balance_outlined,
+                                size: 72,
+                                color: Color(0x33FFFFFF),
                               ),
-                            ),
-                            SizedBox(height: 16),
-                            Text(
-                              'A simpler way to reserve facilities and equipment at Mabalacat City College.',
-                              style: TextStyle(
-                                color: Color(0xFFFFE6E9),
-                                fontSize: 16,
-                                height: 1.6,
+                              SizedBox(height: 18),
+                              Text(
+                                'Your campus,\nready when you are.',
+                                style: TextStyle(
+                                  fontSize: 42,
+                                  height: 1.12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                          ],
+                              SizedBox(height: 16),
+                              Text(
+                                'A simpler way to reserve facilities and equipment at Mabalacat City College.',
+                                style: TextStyle(
+                                  color: Color(0xFFDCEEFF),
+                                  fontSize: 16,
+                                  height: 1.6,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         Text(
                           'MABALACAT CITY COLLEGE',
                           style: TextStyle(
-                            color: Color(0xFFFFE6E9),
+                            color: Color(0xFFDCEEFF),
                             fontSize: 11,
                             letterSpacing: 1.8,
                             fontWeight: FontWeight.w700,
@@ -202,7 +229,10 @@ class _SignInScreen extends StatelessWidget {
                       constraints: const BoxConstraints(maxWidth: 440),
                       child: Padding(
                         padding: const EdgeInsets.all(32),
-                        child: _SignInCard(auth: auth),
+                        child: FermsAppear(
+                          index: 1,
+                          child: _SignInCard(auth: auth),
+                        ),
                       ),
                     ),
                   ),
@@ -223,9 +253,9 @@ class _SignInScreen extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const _BrandLockup(onDark: false),
+                      const FermsAppear(child: _BrandLockup(onDark: false)),
                       const SizedBox(height: 28),
-                      _SignInCard(auth: auth),
+                      FermsAppear(index: 1, child: _SignInCard(auth: auth)),
                       const SizedBox(height: 24),
                       const Text(
                         'MABALACAT CITY COLLEGE',
@@ -257,7 +287,7 @@ class _BrandLockup extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = onDark ? Colors.white : const Color(0xFF282526);
     final secondary = onDark
-        ? const Color(0xFFFFE6E9)
+        ? const Color(0xFFDCEEFF)
         : const Color(0xFF747477);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -271,7 +301,7 @@ class _BrandLockup extends StatelessWidget {
           ),
           child: Icon(
             Icons.account_balance_outlined,
-            color: onDark ? Colors.white : const Color(0xFF9E1B32),
+            color: onDark ? Colors.white : const Color(0xFF1769AA),
             size: 27,
           ),
         ),
@@ -332,12 +362,12 @@ class _SignInCard extends StatelessWidget {
           height: 42,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFFFAECEF),
+            color: const Color(0xFFE7F2FC),
             borderRadius: BorderRadius.circular(13),
           ),
           child: const Icon(
             Icons.waving_hand_outlined,
-            color: Color(0xFF9E1B32),
+            color: Color(0xFF1769AA),
             size: 22,
           ),
         ),
@@ -370,10 +400,7 @@ class _SignInCard extends StatelessWidget {
             ),
           ),
           icon: auth.signingIn
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+              ? const FermsLoadingIndicator(size: 20)
               : const Icon(Icons.login),
           label: Text(
             auth.signingIn ? 'Opening sign-in…' : 'Continue with Microsoft',
@@ -452,7 +479,7 @@ class _FermsHomeState extends State<_FermsHome> {
         widget.repository.dashboard(),
         _profileRequired
             ? Future.value(<Reservation>[])
-            : widget.repository.reservations(history: _history),
+            : widget.repository.reservations(user: _user, history: _history),
         widget.repository.facilities(),
         widget.repository.equipment(),
       ]);
@@ -485,8 +512,8 @@ class _FermsHomeState extends State<_FermsHome> {
       return;
     }
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ReservationForm(
+      fermsPageRoute(
+        ReservationForm(
           repository: widget.repository,
           facilities: _facilities,
           equipment: _equipment,
@@ -525,7 +552,7 @@ class _FermsHomeState extends State<_FermsHome> {
             children: [
               const Icon(
                 Icons.account_balance_outlined,
-                color: Color(0xFF9E1B32),
+                color: Color(0xFF1769AA),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -566,7 +593,7 @@ class _FermsHomeState extends State<_FermsHome> {
         floatingActionButton: _section == 0 || _section == 1
             ? FloatingActionButton.extended(
                 onPressed: _openRequest,
-                backgroundColor: const Color(0xFF9E1B32),
+                backgroundColor: const Color(0xFF1769AA),
                 foregroundColor: Colors.white,
                 icon: const Icon(Icons.add),
                 label: const Text('New request'),
@@ -583,7 +610,7 @@ class _FermsHomeState extends State<_FermsHome> {
                 leading: Padding(
                   padding: const EdgeInsets.only(bottom: 14, top: 4),
                   child: Text(
-                    _user.role.toUpperCase().replaceAll('_', ' '),
+                    _user.displayRole.toUpperCase(),
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
@@ -678,7 +705,7 @@ class _FermsHomeState extends State<_FermsHome> {
       return _ProfileRequired(onComplete: () => setState(() => _section = 4));
     }
     if (_loading && _reservations.isEmpty && _facilities.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: FermsLoadingIndicator());
     }
     return switch (_section) {
       0 => _DashboardPage(
@@ -745,7 +772,7 @@ class _DashboardPage extends StatelessWidget {
     final data = asJsonMap(unwrapData(dashboard));
     final pending = intValue(
       data['pending_requests'] ?? data['pending'] ?? data['pending_count'],
-      reservations.where((item) => item.isPending).length,
+      reservations.where((item) => item.isAwaitingDecision).length,
     );
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -753,92 +780,110 @@ class _DashboardPage extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 90),
         children: [
-          Text(
-            'Good day, ${user.name.split(' ').first}',
-            style: Theme.of(context).textTheme.headlineMedium
-                ?.copyWith(fontWeight: FontWeight.w800, fontFamily: 'serif'),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            user.canManageResources
-                ? 'Facility and equipment activity at a glance.'
-                : 'Your campus requests and available resources.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          FermsAppear(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Good day, ${user.name.split(' ').first}',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'serif',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  user.canManageResources
+                      ? 'Facility and equipment activity at a glance.'
+                      : 'Your campus requests and available resources.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 22),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 700 ? 4 : 2;
-              return GridView.count(
-                crossAxisCount: columns,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 1.8,
-                children: [
-                  _StatTile(
-                    label: 'Pending',
-                    value: '$pending',
-                    icon: Icons.hourglass_top_outlined,
-                    color: const Color(0xFF9A5A00),
-                  ),
-                  _StatTile(
-                    label: 'Requests',
-                    value: '${reservations.length}',
-                    icon: Icons.event_note_outlined,
-                    color: const Color(0xFF9E1B32),
-                  ),
-                  _StatTile(
-                    label: 'Facilities',
-                    value: '${facilities.length}',
-                    icon: Icons.apartment_outlined,
-                    color: const Color(0xFF28664D),
-                  ),
-                  _StatTile(
-                    label: 'Equipment',
-                    value: '${equipment.length}',
-                    icon: Icons.inventory_2_outlined,
-                    color: const Color(0xFF455A64),
-                  ),
-                ],
-              );
-            },
+          FermsAppear(
+            index: 1,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 700 ? 4 : 2;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1.8,
+                  children: [
+                    _StatTile(
+                      label: 'Pending',
+                      value: '$pending',
+                      icon: Icons.hourglass_top_outlined,
+                      color: const Color(0xFF9A5A00),
+                    ),
+                    _StatTile(
+                      label: 'Requests',
+                      value: '${reservations.length}',
+                      icon: Icons.event_note_outlined,
+                      color: const Color(0xFF1769AA),
+                    ),
+                    _StatTile(
+                      label: 'Facilities',
+                      value: '${facilities.length}',
+                      icon: Icons.apartment_outlined,
+                      color: const Color(0xFF28664D),
+                    ),
+                    _StatTile(
+                      label: 'Equipment',
+                      value: '${equipment.length}',
+                      icon: Icons.inventory_2_outlined,
+                      color: const Color(0xFF455A64),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
           const SizedBox(height: 22),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed: onNewRequest,
-                icon: const Icon(Icons.add),
-                label: const Text('New request'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onRequests,
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('View requests'),
-              ),
-            ],
+          FermsAppear(
+            index: 2,
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  onPressed: onNewRequest,
+                  icon: const Icon(Icons.add),
+                  label: const Text('New request'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onRequests,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('View requests'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 30),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Upcoming requests',
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800),
+          FermsAppear(
+            index: 3,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Upcoming requests',
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
                 ),
-              ),
-              TextButton(
-                onPressed: onRequests,
-                child: const Text('All requests'),
-              ),
-            ],
+                TextButton(
+                  onPressed: onRequests,
+                  child: const Text('All requests'),
+                ),
+              ],
+            ),
           ),
           if (reservations.isEmpty)
             const Padding(
@@ -846,41 +891,43 @@ class _DashboardPage extends StatelessWidget {
               child: Text('No upcoming requests to show.'),
             )
           else
-            ...reservations
-                .take(4)
-                .map(
-                  (reservation) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Material(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(8),
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: Color(0xFFF9E7EA),
-                          foregroundColor: Color(0xFF9E1B32),
-                          child: Icon(Icons.event_outlined),
-                        ),
-                        title: Text(
-                          reservation.purpose,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          '${reservation.date} · ${reservation.startTime}–${reservation.endTime}',
-                        ),
-                        trailing: Text(
-                          reservation.status.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF9A5A00),
-                          ),
-                        ),
-                        onTap: onRequests,
+            ...reservations.take(4).indexed.map((entry) {
+              final reservation = entry.$2;
+              return FermsAppear(
+                index: entry.$1 + 4,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFFE7F2FC),
+                        foregroundColor: Color(0xFF1769AA),
+                        child: Icon(Icons.event_outlined),
                       ),
+                      title: Text(
+                        reservation.purpose,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${reservation.date} · ${reservation.startTime}–${reservation.endTime}',
+                      ),
+                      trailing: Text(
+                        reservation.status.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF9A5A00),
+                        ),
+                      ),
+                      onTap: onRequests,
                     ),
                   ),
                 ),
+              );
+            }),
         ],
       ),
     );
@@ -970,6 +1017,12 @@ class _ProfilePageState extends State<_ProfilePage> {
   bool _saving = false;
   String? _error;
 
+  Future<void> _openFeedback() => Navigator.of(context).push<void>(
+    fermsPageRoute<void>(
+      FeedbackPage(repository: widget.repository, user: widget.user),
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -1047,8 +1100,25 @@ class _ProfilePageState extends State<_ProfilePage> {
         subtitle: Text(widget.user.email),
       ),
       const SizedBox(height: 8),
-      Text('Role: ${widget.user.role.replaceAll('_', ' ')}'),
-      if (widget.user.role.toLowerCase() == 'student') ...[
+      Text('Role: ${widget.user.displayRole}'),
+      const SizedBox(height: 8),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.rate_review_outlined),
+        title: Text(
+          widget.user.canViewFeedback
+              ? 'Feedback inbox and submission'
+              : 'Send feedback',
+        ),
+        subtitle: Text(
+          widget.user.canViewFeedback
+              ? 'View feedback or submit your own.'
+              : 'Share a rating and comment with the administrators.',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _openFeedback,
+      ),
+      if (widget.user.normalizedRole == 'student') ...[
         const SizedBox(height: 24),
         Text(
           'Organization details',
@@ -1161,7 +1231,7 @@ class _ProfilePageState extends State<_ProfilePage> {
       if (widget.user.isSuperAdmin) ...[
         const SizedBox(height: 28),
         const _ErrorBanner(
-          'Staff and administrator account management is not included in the documented API contract.',
+          'IT Administrator account management is currently available on the web portal only. Laravel enforces the three-account limit.',
         ),
       ],
       const SizedBox(height: 28),
@@ -1185,10 +1255,10 @@ class _ProfileRequired extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.assignment_ind_outlined,
             size: 42,
-            color: Color(0xFF9E1B32),
+            color: Theme.of(context).colorScheme.primary,
           ),
           const SizedBox(height: 14),
           Text(
@@ -1218,7 +1288,7 @@ class _LoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: CircularProgressIndicator()));
+      const Scaffold(body: Center(child: FermsLoadingIndicator(size: 64)));
 }
 
 class _PageError extends StatelessWidget {
@@ -1233,10 +1303,10 @@ class _PageError extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.cloud_off_outlined,
             size: 40,
-            color: Color(0xFF9E1B32),
+            color: Theme.of(context).colorScheme.primary,
           ),
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center),

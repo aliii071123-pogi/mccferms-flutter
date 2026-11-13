@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'ferms_animations.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 import 'reservation_form.dart';
@@ -32,7 +33,15 @@ class ReservationsPage extends StatefulWidget {
 
 class _ReservationsPageState extends State<ReservationsPage> {
   bool _history = false;
+  bool _actionLoading = false;
   String? _actionError;
+
+  List<Reservation> get _visibleReservations {
+    if (widget.user.normalizedRole != 'student') return widget.reservations;
+    return widget.reservations
+        .where((reservation) => reservation.requesterId == widget.user.id)
+        .toList();
+  }
 
   Future<void> _confirmDecision(Reservation reservation, String status) async {
     final approved = status == 'approved';
@@ -91,6 +100,36 @@ class _ReservationsPageState extends State<ReservationsPage> {
     }
   }
 
+  Future<void> _confirmRecommendation(Reservation reservation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.thumb_up_alt_outlined),
+        title: const Text('Recommend approval?'),
+        content: const Text(
+          'This sends an approval recommendation to the administrators. '
+          'Only an Admin or IT Administrator can make the final decision.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Go back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Recommend approval'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _runAction(
+        () => widget.repository.recommendReservation(reservation.id),
+        successMessage: 'Approval recommendation sent to administrators.',
+      );
+    }
+  }
+
   Future<void> _confirmDelete(Reservation reservation) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -118,20 +157,32 @@ class _ReservationsPageState extends State<ReservationsPage> {
     }
   }
 
-  Future<void> _runAction(Future<void> Function() action) async {
-    setState(() => _actionError = null);
+  Future<void> _runAction(
+    Future<void> Function() action, {
+    String? successMessage,
+  }) async {
+    setState(() {
+      _actionError = null;
+      _actionLoading = true;
+    });
     try {
       await action();
       await widget.onRefresh(_history);
+      if (mounted && successMessage != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(successMessage)));
+      }
     } catch (error) {
       if (mounted) setState(() => _actionError = error.toString());
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
     }
   }
 
   Future<void> _edit(Reservation reservation) async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ReservationForm(
+      fermsPageRoute(
+        ReservationForm(
           repository: widget.repository,
           facilities: widget.facilities,
           equipment: widget.equipment,
@@ -180,6 +231,8 @@ class _ReservationsPageState extends State<ReservationsPage> {
       Text(
         widget.user.canReviewRequests
             ? 'Review and track facility and equipment requests.'
+            : widget.user.canRecommendReservations
+            ? 'Recommend approval for pending requests. Final decisions stay with administrators.'
             : 'Track your facility and equipment requests.',
         style: Theme.of(context).textTheme.bodyMedium
             ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -189,7 +242,7 @@ class _ReservationsPageState extends State<ReservationsPage> {
         _InlineError(_actionError!),
       ],
       const SizedBox(height: 18),
-      if (widget.loading) const LinearProgressIndicator(),
+      if (widget.loading) const Center(child: FermsLoadingIndicator(size: 28)),
       if (widget.error != null) ...[
         _InlineError(widget.error!),
         TextButton.icon(
@@ -197,7 +250,7 @@ class _ReservationsPageState extends State<ReservationsPage> {
           icon: const Icon(Icons.refresh),
           label: const Text('Retry'),
         ),
-      ] else if (!widget.loading && widget.reservations.isEmpty)
+      ] else if (!widget.loading && _visibleReservations.isEmpty)
         Expanded(
           child: Center(
             child: Column(
@@ -206,7 +259,7 @@ class _ReservationsPageState extends State<ReservationsPage> {
                 Icon(
                   _history ? Icons.history : Icons.event_available_outlined,
                   size: 42,
-                  color: const Color(0xFF9E1B32),
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -227,10 +280,10 @@ class _ReservationsPageState extends State<ReservationsPage> {
             child: ListView.separated(
               padding: const EdgeInsets.only(bottom: 24),
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: widget.reservations.length,
+              itemCount: _visibleReservations.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) =>
-                  _reservationTile(widget.reservations[index]),
+                  _reservationTile(_visibleReservations[index]),
             ),
           ),
         ),
@@ -240,10 +293,15 @@ class _ReservationsPageState extends State<ReservationsPage> {
   Widget _reservationTile(Reservation reservation) {
     final statusColor = _statusColor(reservation.status);
     final canEdit =
-        widget.user.role.toLowerCase() == 'student' &&
+        widget.user.normalizedRole == 'student' &&
         reservation.isPending &&
         !_history;
-    final canReview = widget.user.canReviewRequests && reservation.isPending;
+    final canReview =
+        widget.user.canReviewRequests && reservation.isAwaitingDecision;
+    final canRecommend =
+        widget.user.canRecommendReservations &&
+        reservation.isPending &&
+        reservation.recommendationStatus != 'recommended';
     final canDelete = widget.user.canReviewRequests;
     return Material(
       color: Theme.of(context).colorScheme.surface,
@@ -299,7 +357,33 @@ class _ReservationsPageState extends State<ReservationsPage> {
                   ),
                 ),
               ],
-              if (canEdit || canReview || canDelete) ...[
+              if (reservation.recommendationStatus == 'recommended') ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Approval recommended'
+                  '${reservation.recommenderName.isEmpty ? '' : ' by ${reservation.recommenderName}'}'
+                  '${reservation.recommendedAt == null ? '' : ' · ${_formatTimestamp(reservation.recommendedAt!)}'}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              if (reservation.reviewedAt != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Decision ${reservation.status}'
+                  ' · ${_formatTimestamp(reservation.reviewedAt!)}'
+                  '${reservation.reviewerName.isEmpty ? '' : ' · ${reservation.reviewerName}'}',
+                  key: ValueKey('decision-${reservation.id}'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              if (canEdit || canReview || canRecommend || canDelete) ...[
                 const Divider(height: 24),
                 Wrap(
                   spacing: 8,
@@ -307,34 +391,56 @@ class _ReservationsPageState extends State<ReservationsPage> {
                   children: [
                     if (canEdit) ...[
                       OutlinedButton.icon(
-                        onPressed: () => _edit(reservation),
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _edit(reservation),
                         icon: const Icon(Icons.edit_outlined),
                         label: const Text('Edit'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: () => _confirmCancel(reservation),
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _confirmCancel(reservation),
                         icon: const Icon(Icons.close),
                         label: const Text('Cancel'),
                       ),
                     ],
                     if (canReview) ...[
                       FilledButton.icon(
-                        onPressed: () =>
-                            _confirmDecision(reservation, 'approved'),
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _confirmDecision(reservation, 'approved'),
                         icon: const Icon(Icons.check),
                         label: const Text('Approve'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: () =>
-                            _confirmDecision(reservation, 'rejected'),
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _confirmDecision(reservation, 'rejected'),
                         icon: const Icon(Icons.close),
                         label: const Text('Reject'),
                       ),
                     ],
+                    if (canRecommend)
+                      FilledButton.tonalIcon(
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _confirmRecommendation(reservation),
+                        icon: _actionLoading
+                            ? const FermsLoadingIndicator(size: 20)
+                            : const Icon(Icons.thumb_up_alt_outlined),
+                        label: Text(
+                          _actionLoading
+                              ? 'Sending recommendation…'
+                              : 'Recommend approval',
+                        ),
+                      ),
                     if (canDelete)
                       IconButton(
                         tooltip: 'Delete request',
-                        onPressed: () => _confirmDelete(reservation),
+                        onPressed: _actionLoading
+                            ? null
+                            : () => _confirmDelete(reservation),
                         icon: const Icon(Icons.delete_outline),
                       ),
                   ],
@@ -389,6 +495,15 @@ class _ReservationsPageState extends State<ReservationsPage> {
                   ? 'No description provided.'
                   : reservation.description,
             ),
+            if (reservation.reviewedAt != null) ...[
+              const SizedBox(height: 14),
+              Text(
+                'Decision: ${reservation.status}'
+                ' · ${_formatTimestamp(reservation.reviewedAt!)}'
+                '${reservation.reviewerName.isEmpty ? '' : ' · ${reservation.reviewerName}'}',
+                key: ValueKey('detail-decision-${reservation.id}'),
+              ),
+            ],
           ],
         ),
       ),
@@ -407,6 +522,18 @@ class _ReservationsPageState extends State<ReservationsPage> {
     'completed' || 'closed' => const Color(0xFF59636A),
     _ => const Color(0xFF9A5A00),
   };
+
+  String _formatTimestamp(DateTime value) {
+    final local = value.toLocal();
+    final date =
+        '${local.year.toString().padLeft(4, '0')}-'
+        '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
+    final time =
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+    return '$date $time';
+  }
 }
 
 class _StatusLabel extends StatelessWidget {

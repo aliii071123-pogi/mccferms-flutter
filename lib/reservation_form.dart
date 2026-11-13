@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api_client.dart';
+import 'ferms_animations.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 
@@ -497,7 +498,7 @@ class _ReservationFormState extends State<ReservationForm> {
                     icon: _saving
                         ? const SizedBox.square(
                             dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: FermsLoadingIndicator(size: 20),
                           )
                         : const Icon(Icons.send_outlined),
                     label: Text(

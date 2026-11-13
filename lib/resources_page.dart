@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'calendar_page.dart';
+import 'ferms_animations.dart';
 import 'ferms_models.dart';
 import 'ferms_repository.dart';
 
@@ -39,9 +40,7 @@ class ResourcesPage extends StatelessWidget {
             ),
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => CalendarPage(repository: repository),
-                ),
+                fermsPageRoute(CalendarPage(repository: repository)),
               ),
               icon: const Icon(Icons.calendar_month_outlined),
               label: const Text('Facility calendar'),
@@ -151,8 +150,8 @@ class _FacilityList extends StatelessWidget {
 
   Future<void> _editFacility(BuildContext context, [Facility? facility]) async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => _ResourceForm(
+      fermsPageRoute(
+        _ResourceForm(
           repository: repository,
           facility: facility,
           isFacility: true,
@@ -311,8 +310,8 @@ class _EquipmentListState extends State<_EquipmentList> {
 
   Future<void> _editEquipment(BuildContext context, [Equipment? item]) async {
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => _ResourceForm(
+      fermsPageRoute(
+        _ResourceForm(
           repository: widget.repository,
           equipment: item,
           isFacility: false,
@@ -356,7 +355,7 @@ class _ResourceTile extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: const Color(0xFF9E1B32)),
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -421,6 +420,7 @@ class _ResourceTile extends StatelessWidget {
               final start = stringValue(block['start_time']);
               final end = stringValue(block['end_time']);
               final status = stringValue(block['status'], 'reserved');
+              final quantity = intValue(block['quantity']);
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
@@ -429,7 +429,8 @@ class _ResourceTile extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '$date  $start–$end',
+                        '$date  $start–$end'
+                        '${quantity > 0 ? ' · $quantity units' : ''}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.onSurface,

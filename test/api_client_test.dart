@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mcc_ferms_flutter/api_client.dart';
+import 'package:mcc_ferms_flutter/ferms_models.dart';
 import 'package:mcc_ferms_flutter/ferms_repository.dart';
 
 void main() {
@@ -86,6 +87,33 @@ void main() {
     expect(facilities.single.capacity, 120);
   });
 
+  test(
+    'student reservations are owner-filtered before reaching the UI',
+    () async {
+      final client = FermsApiClient(
+        baseUrl: 'https://ferms.example.test',
+        token: 'student-a-token',
+        client: MockClient(
+          (_) async => http.Response(
+            '{"data":['
+            '{"id":1,"user_id":7,"purpose":"Student A request","status":"pending"},'
+            '{"id":2,"user_id":8,"purpose":"Student B private request","status":"pending"}'
+            '],"current_page":1,"last_page":1}',
+            200,
+          ),
+        ),
+      );
+      final repository = FermsRepository(client);
+      final studentA = FermsUser.fromJson({'id': 7, 'role': 'student'});
+
+      final reservations = await repository.reservations(user: studentA);
+
+      expect(reservations, hasLength(1));
+      expect(reservations.single.requesterId, '7');
+      expect(reservations.single.purpose, 'Student A request');
+    },
+  );
+
   test('requests calendar and managed organization choices', () async {
     final requests = <http.Request>[];
     final client = FermsApiClient(
@@ -146,4 +174,105 @@ void main() {
       expect(suspensionHandled, isTrue);
     },
   );
+
+  test(
+    'uses the documented recommendation and feedback API requests',
+    () async {
+      final requests = <http.Request>[];
+      final client = FermsApiClient(
+        baseUrl: 'https://ferms.example.test',
+        token: 'test-token',
+        client: MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"data":{"id":12}}', 201);
+        }),
+      );
+      final repository = FermsRepository(client);
+      final student = FermsUser.fromJson({'id': 7, 'role': 'student'});
+
+      await repository.recommendReservation('12');
+      await repository.submitFeedback(
+        user: student,
+        rating: 5,
+        comment: '  Great service. ',
+        anonymous: true,
+      );
+
+      expect(requests[0].method, 'POST');
+      expect(requests[0].url.path, '/api/v1/reservations/12/recommend');
+      expect(requests[0].body, isEmpty);
+      expect(requests[0].headers['authorization'], 'Bearer test-token');
+      expect(requests[1].url.path, '/api/v1/feedback');
+      expect(jsonDecode(requests[1].body), {
+        'rating': 5,
+        'comment': 'Great service.',
+        'anonymous': true,
+      });
+    },
+  );
+
+  test(
+    'blocks non-student anonymity and unauthorized feedback listing',
+    () async {
+      var requestCount = 0;
+      final client = FermsApiClient(
+        baseUrl: 'https://ferms.example.test',
+        client: MockClient((_) async {
+          requestCount++;
+          return http.Response('{"data":[]}', 200);
+        }),
+      );
+      final repository = FermsRepository(client);
+      final staff = FermsUser.fromJson({'id': 8, 'role': 'staff'});
+
+      await expectLater(
+        repository.submitFeedback(
+          user: staff,
+          rating: 4,
+          comment: 'Useful.',
+          anonymous: true,
+        ),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repository.feedback(user: staff),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            403,
+          ),
+        ),
+      );
+      expect(requestCount, 0);
+    },
+  );
+
+  test('loads administrator feedback by page from Laravel paginator', () async {
+    late http.Request captured;
+    final client = FermsApiClient(
+      baseUrl: 'https://ferms.example.test',
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '{"data":[{"id":3,"rating":4,"comment":"Helpful",'
+          '"anonymous":false,"created_at":"2026-11-20T08:00:00Z"}],'
+          '"current_page":2,"last_page":3,"per_page":12,"total":25}',
+          200,
+        );
+      }),
+    );
+    final result = await FermsRepository(client).feedback(
+      user: FermsUser.fromJson({'id': 9, 'role': 'super_admin'}),
+      page: 2,
+    );
+
+    expect(captured.url.queryParameters, {'page': '2'});
+    expect(result.items.single.comment, 'Helpful');
+    expect(result.currentPage, 2);
+    expect(result.lastPage, 3);
+    expect(result.total, 25);
+    expect(result.hasPreviousPage, isTrue);
+    expect(result.hasNextPage, isTrue);
+  });
 }

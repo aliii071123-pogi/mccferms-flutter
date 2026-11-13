@@ -62,9 +62,27 @@ class FermsUser {
       const {'staff', 'admin', 'super_admin'}.contains(normalizedRole);
 
   bool get canReviewRequests =>
-      const {'admin', 'administrator', 'super_admin'}.contains(normalizedRole);
+      const {'admin', 'super_admin'}.contains(normalizedRole);
+
+  bool get canRecommendReservations => normalizedRole == 'staff';
+
+  bool get canSubmitFeedback => true;
+
+  bool get canViewFeedback =>
+      const {'admin', 'super_admin'}.contains(normalizedRole);
+
+  String get displayRole => switch (normalizedRole) {
+    'super_admin' => 'IT Administrator',
+    'admin' || 'administrator' => 'Admin',
+    'staff' => 'Staff',
+    'student' => 'Student',
+    _ => role,
+  };
 
   bool get isSuperAdmin => normalizedRole == 'super_admin';
+
+  bool canCreateItAdministrator({required int currentTotal}) =>
+      isSuperAdmin && currentTotal >= 0 && currentTotal < 3;
 
   factory FermsUser.fromJson(JsonMap json) {
     final profile = asJsonMap(json['profile']);
@@ -147,6 +165,8 @@ class CalendarEntry {
   final String status;
 
   String get displayStatus => status == 'approved' ? 'Booked' : 'Pending';
+  bool get isPendingAvailability =>
+      status == 'pending' || status == 'recommended';
 
   factory CalendarEntry.fromJson(JsonMap json) => CalendarEntry(
     facility: stringValue(json['facility']),
@@ -273,6 +293,13 @@ class Reservation {
     this.requesterEmail = '',
     this.equipment = const {},
     this.schedules = const [],
+    this.requesterId = '',
+    this.reviewedAt,
+    this.reviewerName = '',
+    this.recommendationStatus,
+    this.recommendedAt,
+    this.recommenderId = '',
+    this.recommenderName = '',
   });
 
   final String id;
@@ -289,12 +316,21 @@ class Reservation {
   final String requesterEmail;
   final JsonMap equipment;
   final List<ReservationSchedule> schedules;
+  final String requesterId;
+  final DateTime? reviewedAt;
+  final String reviewerName;
+  final String? recommendationStatus;
+  final DateTime? recommendedAt;
+  final String recommenderId;
+  final String recommenderName;
 
   ReservationSchedule get primarySchedule => schedules.isEmpty
       ? ReservationSchedule(date: date, startTime: startTime, endTime: endTime)
       : schedules.first;
 
   bool get isPending => status.toLowerCase() == 'pending';
+  bool get isAwaitingDecision =>
+      const {'pending', 'recommended'}.contains(status.toLowerCase());
   bool get isClosed => const {
     'completed',
     'closed',
@@ -306,6 +342,8 @@ class Reservation {
   factory Reservation.fromJson(JsonMap json) {
     final facility = asJsonMap(json['facility']);
     final user = asJsonMap(json['user'] ?? json['requester']);
+    final reviewer = asJsonMap(json['reviewer']);
+    final recommender = asJsonMap(json['recommender']);
     final equipment = <String, dynamic>{};
     final rawEquipment = json['equipment'];
     if (rawEquipment is Map) {
@@ -347,6 +385,73 @@ class Reservation {
       requesterEmail: stringValue(json['requester_email'] ?? user['email']),
       equipment: equipment,
       schedules: schedules,
+      requesterId: stringValue(json['user_id'] ?? user['id']),
+      reviewedAt: _dateTimeOrNull(json['reviewed_at']),
+      reviewerName: stringValue(json['reviewer_name'] ?? reviewer['name']),
+      recommendationStatus:
+          stringValue(json['status']).toLowerCase() == 'recommended'
+          ? 'recommended'
+          : null,
+      recommendedAt: _dateTimeOrNull(json['recommended_at']),
+      recommenderId: stringValue(json['recommended_by'] ?? recommender['id']),
+      recommenderName: stringValue(
+        json['recommender_name'] ?? recommender['name'],
+      ),
     );
   }
+}
+
+DateTime? _dateTimeOrNull(dynamic value) {
+  if (value is! String || value.isEmpty) return null;
+  return DateTime.tryParse(value);
+}
+
+class FermsFeedback {
+  const FermsFeedback({
+    required this.id,
+    required this.rating,
+    required this.comment,
+    required this.isAnonymous,
+    required this.createdAt,
+    this.submitterName = '',
+  });
+
+  final String id;
+  final int rating;
+  final String comment;
+  final bool isAnonymous;
+  final DateTime? createdAt;
+  final String submitterName;
+
+  factory FermsFeedback.fromJson(JsonMap json) {
+    final anonymous = json['is_anonymous'] == true || json['anonymous'] == true;
+    final user = asJsonMap(json['user']);
+    return FermsFeedback(
+      id: stringValue(json['id']),
+      rating: intValue(json['rating']),
+      comment: stringValue(json['comment']),
+      isAnonymous: anonymous,
+      createdAt: _dateTimeOrNull(json['created_at']),
+      submitterName: anonymous
+          ? ''
+          : stringValue(json['submitter_name'] ?? user['name']),
+    );
+  }
+}
+
+class FermsFeedbackPage {
+  const FermsFeedbackPage({
+    required this.items,
+    required this.currentPage,
+    required this.lastPage,
+    required this.total,
+  });
+
+  final List<FermsFeedback> items;
+  final int currentPage;
+  final int lastPage;
+  final int total;
+
+  bool get hasPreviousPage => currentPage > 1;
+  bool get hasNextPage => currentPage < lastPage;
 }
